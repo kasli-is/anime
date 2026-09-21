@@ -206,6 +206,18 @@ function getEpisodeNumberBadge(ep, index) {
   return `${index + 1}. Bölüm`;
 }
 
+function cleanHtmlText(str) {
+  if (!str) return '';
+  // Convert <br>, <br/>, <p> to newline
+  let text = str.replace(/<br\s*[\/]?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
+  // Strip all other HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+  // Decode common HTML entities
+  const txt = document.createElement('textarea');
+  txt.innerHTML = text;
+  return txt.value.trim();
+}
+
 // ==========================================
 // STORAGE HELPERS
 // ==========================================
@@ -387,7 +399,7 @@ async function openAnimeDetail(slug) {
     DOM.detailEpCount.textContent = `${anime.episodes_count} Bölüm`;
     DOM.detailStudio.textContent = anime.studio ? `Stüdyo: ${anime.studio}` : '';
     DOM.detailDates.textContent = anime.start_date || '';
-    DOM.detailSummary.textContent = anime.summary || 'Açıklama bulunmuyor.';
+    DOM.detailSummary.textContent = cleanHtmlText(anime.summary) || 'Açıklama bulunmuyor.';
     
     // Genres
     DOM.detailGenres.innerHTML = (anime.genres || []).map(g => `<span class="genre-tag">${g}</span>`).join('');
