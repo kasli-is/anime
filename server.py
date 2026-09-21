@@ -37,35 +37,62 @@ COVER_URL_CACHE = {}
 GENRE_INDEX = {}
 GENRE_COUNTS = {}  # genre_name -> count (original casing)
 
+GENRE_INDEX_FILE = os.path.join(BASE_DIR, 'genre_index.json')
+
 def build_genre_index():
-    """Scans all info.json files and builds a genre->slugs index for fast filtering"""
+    """Builds genre index from mirror directory and saves to genre_index.json, or loads from genre_index.json"""
     global GENRE_INDEX, GENRE_COUNTS
     idx = {}
     counts = {}
-    if not os.path.isdir(MIRROR_DIR):
-        return
-    for slug in os.listdir(MIRROR_DIR):
-        info_path = os.path.join(MIRROR_DIR, slug, 'info.json')
-        if not os.path.isfile(info_path):
-            continue
+
+    # 1. If mirror exists locally, build and update genre_index.json
+    if os.path.isdir(MIRROR_DIR):
+        for slug in os.listdir(MIRROR_DIR):
+            info_path = os.path.join(MIRROR_DIR, slug, 'info.json')
+            if not os.path.isfile(info_path):
+                continue
+            try:
+                with open(info_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    genres = data.get('Anime Türü', [])
+                    for g in genres:
+                        gl = g.lower().strip()
+                        if not gl:
+                            continue
+                        if gl not in idx:
+                            idx[gl] = set()
+                            counts[gl] = {'name': g, 'count': 0}
+                        idx[gl].add(slug)
+                        counts[gl]['count'] += 1
+            except Exception:
+                pass
+        GENRE_INDEX = idx
+        GENRE_COUNTS = counts
+        print(f"[Tür İndeksi] {len(GENRE_INDEX)} tür, toplam {sum(c['count'] for c in GENRE_COUNTS.values())} eşleşme indekslendi.")
+        
+        # Save to genre_index.json for production deployment
         try:
-            with open(info_path, 'r', encoding='utf-8') as f:
+            serializable = {
+                'counts': counts,
+                'index': {k: list(v) for k, v in idx.items()}
+            }
+            with open(GENRE_INDEX_FILE, 'w', encoding='utf-8') as f:
+                json.dump(serializable, f, ensure_ascii=False)
+            print(f"[Tür İndeksi] {GENRE_INDEX_FILE} dosyasına kaydedildi.")
+        except Exception as e:
+            print(f"[Tür İndeksi Kayıt Hata] {e}")
+        return
+
+    # 2. If mirror does not exist (e.g. Render production), load precomputed genre_index.json
+    if os.path.isfile(GENRE_INDEX_FILE):
+        try:
+            with open(GENRE_INDEX_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                genres = data.get('Anime Türü', [])
-                for g in genres:
-                    gl = g.lower().strip()
-                    if not gl:
-                        continue
-                    if gl not in idx:
-                        idx[gl] = set()
-                        counts[gl] = {'name': g, 'count': 0}
-                    idx[gl].add(slug)
-                    counts[gl]['count'] += 1
-        except Exception:
-            pass
-    GENRE_INDEX = idx
-    GENRE_COUNTS = counts
-    print(f"[Tür İndeksi] {len(GENRE_INDEX)} tür, toplam {sum(c['count'] for c in GENRE_COUNTS.values())} eşleşme indekslendi.")
+                GENRE_COUNTS = data.get('counts', {})
+                GENRE_INDEX = {k: set(v) for k, v in data.get('index', {}).items()}
+            print(f"[Tür İndeksi] {GENRE_INDEX_FILE} dosyasından {len(GENRE_INDEX)} tür yüklendi.")
+        except Exception as e:
+            print(f"[Tür İndeksi Yükleme Hata] {e}")
 
 def clean_anime_title(title):
     if not title:
@@ -746,4 +773,3 @@ def run():
 
 if __name__ == '__main__':
     run()
-
