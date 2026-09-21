@@ -2547,24 +2547,50 @@ kbd {
 
   /* Detail Modal on Mobile */
   .modal-overlay {
-    padding: 0;
+    padding: env(safe-area-inset-top, 12px) 0 0 0;
     align-items: flex-end;
+    box-sizing: border-box;
+  }
+
+  /* Center the Favorites Modal on Mobile */
+  #favorites-modal {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: env(safe-area-inset-top, 16px) 1rem env(safe-area-inset-bottom, 16px) 1rem !important;
+  }
+
+  .favorites-modal-container {
+    max-height: 85vh !important;
+    border-radius: var(--radius-lg) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    margin: auto !important;
+    width: 100% !important;
+    max-width: 500px !important;
   }
 
   .detail-container {
-    max-height: 95vh;
+    max-height: calc(100dvh - 35px);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding: 1.25rem;
+    padding-top: 2.75rem; /* Leave room for close button */
     border-bottom: none;
     width: 100%;
     box-sizing: border-box;
   }
 
+  /* Fixed close button inside modal viewport, never clipped by screen top/navbar */
   .modal-close-btn {
-    top: 0.75rem;
-    right: 0.75rem;
-    width: 34px;
-    height: 34px;
+    position: sticky !important;
+    top: 0.5rem !important;
+    right: 0.5rem !important;
+    margin-left: auto !important;
+    margin-top: -2rem !important;
+    margin-bottom: 0.5rem !important;
+    width: 36px;
+    height: 36px;
+    background: #1e293b !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    z-index: 99 !important;
   }
 
   .detail-title {
