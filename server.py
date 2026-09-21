@@ -147,7 +147,8 @@ def resolve_cover_url(slug, title):
                 items = data.get('data', [])
                 if items:
                     p = items[0].get('attributes', {}).get('posterImage', {})
-                    img = p.get('medium') or p.get('small') or p.get('original')
+                    # Prioritize high resolution (large / original / medium)
+                    img = p.get('large') or p.get('original') or p.get('medium') or p.get('small')
                     if img:
                         if slug: COVER_URL_CACHE[slug] = img
                         if title: COVER_URL_CACHE[title] = img
@@ -161,8 +162,9 @@ def resolve_cover_url(slug, title):
         query ($search: String) {
           Media (search: $search, type: ANIME) {
             coverImage {
-              medium
+              extraLarge
               large
+              medium
             }
           }
         }
@@ -176,8 +178,8 @@ def resolve_cover_url(slug, title):
         with urllib.request.urlopen(req, timeout=4) as res:
             if res.status == 200:
                 data = json.loads(res.read().decode('utf-8'))
-                img = data.get('data', {}).get('Media', {}).get('coverImage', {}).get('medium') or \
-                      data.get('data', {}).get('Media', {}).get('coverImage', {}).get('large')
+                cov = data.get('data', {}).get('Media', {}).get('coverImage', {})
+                img = cov.get('extraLarge') or cov.get('large') or cov.get('medium')
                 if img:
                     if slug: COVER_URL_CACHE[slug] = img
                     if title: COVER_URL_CACHE[title] = img
