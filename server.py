@@ -37,15 +37,19 @@ COVER_URL_CACHE = {}
 GENRE_INDEX = {}
 GENRE_COUNTS = {}  # genre_name -> count (original casing)
 
+# Anime metadata cache (slug -> dict of score, genres, category, summary, studio, etc.)
+ANIME_META = {}
+ANIME_META_FILE = os.path.join(BASE_DIR, 'anime_meta.json')
 GENRE_INDEX_FILE = os.path.join(BASE_DIR, 'genre_index.json')
 
 def build_genre_index():
-    """Builds genre index from mirror directory and saves to genre_index.json, or loads from genre_index.json"""
-    global GENRE_INDEX, GENRE_COUNTS
+    """Builds genre index and anime metadata from mirror directory and saves to json files for Render"""
+    global GENRE_INDEX, GENRE_COUNTS, ANIME_META
     idx = {}
     counts = {}
+    meta = {}
 
-    # 1. If mirror exists locally, build and update genre_index.json
+    # 1. If mirror exists locally, build and export anime_meta.json & genre_index.json
     if os.path.isdir(MIRROR_DIR):
         for slug in os.listdir(MIRROR_DIR):
             info_path = os.path.join(MIRROR_DIR, slug, 'info.json')
@@ -64,13 +68,26 @@ def build_genre_index():
                             counts[gl] = {'name': g, 'count': 0}
                         idx[gl].add(slug)
                         counts[gl]['count'] += 1
+
+                    # Keep all anime details for score, category, summary, dates, etc.
+                    meta[slug] = {
+                        'score': data.get('Puanı'),
+                        'category': data.get('Kategori', 'TV'),
+                        'genres': genres,
+                        'japanese': data.get('Japonca', ''),
+                        'start_date': data.get('Başlama Tarihi', ''),
+                        'end_date': data.get('Bitiş Tarihi', ''),
+                        'studio': data.get('Stüdyo', ''),
+                        'summary': data.get('Özet', '')
+                    }
             except Exception:
                 pass
         GENRE_INDEX = idx
         GENRE_COUNTS = counts
-        print(f"[Tür İndeksi] {len(GENRE_INDEX)} tür, toplam {sum(c['count'] for c in GENRE_COUNTS.values())} eşleşme indekslendi.")
+        ANIME_META = meta
+        print(f"[Tür İndeksi] {len(GENRE_INDEX)} tür, {len(ANIME_META)} anime metadata indekslendi.")
         
-        # Save to genre_index.json for production deployment
+        # Save to json files for production deployment
         try:
             serializable = {
                 'counts': counts,
@@ -78,21 +95,30 @@ def build_genre_index():
             }
             with open(GENRE_INDEX_FILE, 'w', encoding='utf-8') as f:
                 json.dump(serializable, f, ensure_ascii=False)
-            print(f"[Tür İndeksi] {GENRE_INDEX_FILE} dosyasına kaydedildi.")
+            with open(ANIME_META_FILE, 'w', encoding='utf-8') as f:
+                json.dump(meta, f, ensure_ascii=False)
+            print(f"[Meta] {ANIME_META_FILE} ve {GENRE_INDEX_FILE} dosyalarına kaydedildi.")
         except Exception as e:
-            print(f"[Tür İndeksi Kayıt Hata] {e}")
+            print(f"[Meta Kayıt Hata] {e}")
         return
 
-    # 2. If mirror does not exist (e.g. Render production), load precomputed genre_index.json
+    # 2. If mirror does not exist (Render production), load precomputed files
     if os.path.isfile(GENRE_INDEX_FILE):
         try:
             with open(GENRE_INDEX_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 GENRE_COUNTS = data.get('counts', {})
                 GENRE_INDEX = {k: set(v) for k, v in data.get('index', {}).items()}
-            print(f"[Tür İndeksi] {GENRE_INDEX_FILE} dosyasından {len(GENRE_INDEX)} tür yüklendi.")
         except Exception as e:
             print(f"[Tür İndeksi Yükleme Hata] {e}")
+
+    if os.path.isfile(ANIME_META_FILE):
+        try:
+            with open(ANIME_META_FILE, 'r', encoding='utf-8') as f:
+                ANIME_META = json.load(f)
+            print(f"[Meta] {len(ANIME_META)} anime metadata yüklendi.")
+        except Exception as e:
+            print(f"[Meta Yükleme Hata] {e}")
 
 def clean_anime_title(title):
     if not title:
@@ -180,6 +206,21 @@ def get_anime_info(slug):
                 return data
         except Exception:
             pass
+
+    # Fallback to precomputed ANIME_META (for Render cloud)
+    if slug in ANIME_META:
+        m = ANIME_META[slug]
+        return {
+            'Puanı': m.get('score'),
+            'Kategori': m.get('category', 'TV'),
+            'Anime Türü': m.get('genres', []),
+            'Japonca': m.get('japanese', ''),
+            'Başlama Tarihi': m.get('start_date', ''),
+            'Bitiş Tarihi': m.get('end_date', ''),
+            'Stüdyo': m.get('studio', ''),
+            'Özet': m.get('summary', '')
+        }
+
     return None
 
 def get_db_connection():
