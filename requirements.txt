@@ -1,0 +1,2 @@
+# Bu proje Python Standart Kütüphanesi kullanmaktadır (ekstra pip paketi gerektirmez).
+# Render gereksinimleri için boş veya minimal tutulabilir:

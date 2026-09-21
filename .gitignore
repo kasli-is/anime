@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+venv/
+
+# Büyük Veri ve Veritabanı Dosyaları (GitHub dosya limiti 100MB'dir!)
+turkanime.db
+links.jsonl
+database.sqlite
+*.db
+*.sqlite
+
+# Windows & Sistem
+Thumbs.db
+Desktop.ini
+*.bat
+*.lnk
+
+# Yerel Mirror klasörü içi (info.json'lar çok fazlaysa veya gereksizse)
+# mirror/
