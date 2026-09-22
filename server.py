@@ -120,6 +120,574 @@ def build_genre_index():
         except Exception as e:
             print(f"[Meta Yükleme Hata] {e}")
 
+# ==========================================
+# INTELLIGENT SEARCH ENGINE & NORMALIZATION
+# ==========================================
+ANIME_CATALOG = []
+ANIME_CATALOG_LOCK = threading.Lock()
+
+def normalize_search_text(s):
+    if not s:
+        return ""
+    s = s.lower()
+    charmap = {
+        'ı': 'i', 'İ': 'i', 'I': 'i',
+        'ğ': 'g', 'Ğ': 'g',
+        'ü': 'u', 'Ü': 'u',
+        'ş': 's', 'Ş': 's',
+        'ö': 'o', 'Ö': 'o',
+        'ç': 'c', 'Ç': 'c',
+        'â': 'a', 'î': 'i', 'û': 'u'
+    }
+    for k, v in charmap.items():
+        s = s.replace(k, v)
+    return s
+
+def compact_search_text(s):
+    """Removes all non-alphanumeric characters for compact matching (e.g. 'Re:Zero' -> 'rezero', 'Dr. Stone' -> 'drstone')"""
+    if not s:
+        return ""
+    return re.sub(r'[^a-z0-9]', '', normalize_search_text(s))
+
+# Popular nicknames, abbreviations, and English titles
+ANIME_ALIASES = {
+    # Attack on Titan -> Always primary first season (shingeki no kyojin)
+    "attack on titan": "shingeki no kyojin",
+    "attack titan": "shingeki no kyojin",
+    "aot": "shingeki no kyojin",
+    "snk": "shingeki no kyojin",
+
+    # Re:Zero
+    "re:zero - starting life in another world": "re zero kara hajimeru isekai seikatsu",
+    "re:zero starting life in another world": "re zero kara hajimeru isekai seikatsu",
+    "starting life in another world": "re zero kara hajimeru isekai seikatsu",
+    "re zero": "re:zero",
+    "re:zero": "re:zero",
+    "rezero": "re:zero",
+
+    # Demon Slayer
+    "demon slayer: kimetsu no yaiba": "kimetsu no yaiba",
+    "demon slayer kimetsu no yaiba": "kimetsu no yaiba",
+    "demon slayer": "kimetsu no yaiba",
+    "kimetsu": "kimetsu no yaiba",
+
+    # My Hero Academia
+    "my hero academia": "boku no hero academia",
+    "mha": "boku no hero academia",
+    "bnha": "boku no hero academia",
+
+    # Solo Leveling
+    "solo leveling": "ore dake level up",
+    "sololeveling": "ore dake level up",
+
+    # Jujutsu Kaisen
+    "jujutsu kaisen": "jujutsu kaisen",
+    "jjk": "jujutsu kaisen",
+
+    # Chainsaw Man
+    "chainsaw man": "chainsaw man",
+    "csm": "chainsaw man",
+
+    # Hunter x Hunter
+    "hunter x hunter": "hunter x hunter",
+    "hxh": "hunter x hunter",
+
+    # Bleach -> Primary first season
+    "bleach: thousand-year blood war": "bleach",
+    "bleach thousand year blood war": "bleach",
+    "bleach tybw": "bleach",
+    "thousand year blood war": "bleach",
+    "tybw": "bleach",
+    "bleach": "bleach",
+
+    # Slime
+    "that time i got reincarnated as a slime": "tensei shitara slime",
+    "reincarnated as a slime": "tensei shitara slime",
+    "tensura": "tensei shitara slime",
+    "slime": "tensei shitara slime",
+
+    # Mushoku Tensei
+    "jobless reincarnation": "mushoku tensei",
+    "mushoku tensei": "mushoku tensei",
+
+    # Eminence in Shadow
+    "the eminence in shadow": "kage no jitsuryokusha",
+    "eminence in shadow": "kage no jitsuryokusha",
+    "kagejitsu": "kage no jitsuryokusha",
+
+    # Seven Deadly Sins
+    "the seven deadly sins": "nanatsu no taizai",
+    "seven deadly sins": "nanatsu no taizai",
+    "7 deadly sins": "nanatsu no taizai",
+
+    # Frieren
+    "frieren: beyond journey's end": "sousou no frieren",
+    "frieren beyond journey's end": "sousou no frieren",
+    "frieren beyond journeys end": "sousou no frieren",
+    "frieren": "sousou no frieren",
+
+    # Delicious in Dungeon
+    "delicious in dungeon": "dungeon meshi",
+    "dungeon meshi": "dungeon meshi",
+
+    # Shield Hero
+    "the rising of the shield hero": "tate no yuusha",
+    "rising of the shield hero": "tate no yuusha",
+    "shield hero": "tate no yuusha",
+
+    # DanMachi
+    "is it wrong to try to pick up girls in a dungeon": "dungeon ni deai",
+    "danmachi": "dungeon ni deai",
+
+    # KonoSuba
+    "god's blessing on this wonderful world": "kono subarashii sekai",
+    "gods blessing on this wonderful world": "kono subarashii sekai",
+    "konosuba": "kono subarashii sekai",
+
+    # Fullmetal Alchemist
+    "fullmetal alchemist: brotherhood": "fullmetal alchemist brotherhood",
+    "fullmetal alchemist brotherhood": "fullmetal alchemist brotherhood",
+    "fullmetal alchemist": "fullmetal alchemist",
+    "fmab": "fullmetal alchemist brotherhood",
+    "fma": "fullmetal alchemist",
+
+    # Sword Art Online
+    "sword art online": "sword art online",
+    "sao": "sword art online",
+
+    # One Punch Man
+    "one punch man": "one punch man",
+    "one-punch man": "one punch man",
+    "opm": "one punch man",
+
+    # Classroom of the Elite
+    "classroom of the elite": "youkoso jitsuryoku",
+    "cote": "youkoso jitsuryoku",
+
+    # Dr. Stone
+    "dr. stone": "dr stone",
+    "dr stone": "dr stone",
+    "drstone": "dr stone",
+
+    # Hell's Paradise
+    "hell's paradise": "jigokuraku",
+    "hells paradise": "jigokuraku",
+    "jigokuraku": "jigokuraku",
+
+    # Kaiju No. 8
+    "kaiju no. 8": "kaijuu 8-gou",
+    "kaiju no 8": "kaijuu 8-gou",
+    "kaiju 8": "kaijuu 8-gou",
+
+    # Oshi no Ko
+    "my star": "oshi no ko",
+    "oshi no ko": "oshi no ko",
+
+    # Your Name & Movies
+    "your name": "kimi no na wa",
+    "your name.": "kimi no na wa",
+    "a silent voice": "koe no katachi",
+    "the shape of voice": "koe no katachi",
+    "i want to eat your pancreas": "kimi no suizou wo tabetai",
+    "weathering with you": "tenki no ko",
+    "suzume": "suzume no tojimari",
+    "suzume no tojimari": "suzume no tojimari",
+    "5 centimeters per second": "byousoku 5 centimeter",
+
+    # Kaguya-sama
+    "kaguya-sama: love is war": "kaguya-sama",
+    "kaguya sama: love is war": "kaguya-sama",
+    "kaguya-sama love is war": "kaguya-sama",
+    "kaguya sama love is war": "kaguya-sama",
+    "love is war": "kaguya-sama",
+    "kaguya-sama": "kaguya-sama",
+    "kaguya sama": "kaguya-sama",
+
+    # Bunny Girl Senpai
+    "rascal does not dream of bunny girl senpai": "seishun buta yarou",
+    "bunny girl senpai": "seishun buta yarou",
+    "aobuta": "seishun buta yarou",
+
+    # The Angel Next Door
+    "the angel next door spoils me rotten": "otonari no tenshi",
+    "the angel next door": "otonari no tenshi",
+    "angel next door": "otonari no tenshi",
+    "otonari no tenshi sama": "otonari no tenshi-sama",
+
+    # My Dress-Up Darling
+    "my dress-up darling": "sono bisque doll",
+    "my dress up darling": "sono bisque doll",
+    "sono bisque doll": "sono bisque doll",
+
+    # The Quintessential Quintuplets
+    "the quintessential quintuplets": "5-toubun no hanayome",
+    "quintessential quintuplets": "5-toubun no hanayome",
+    "5-toubun": "5-toubun no hanayome",
+
+    # Rent-a-Girlfriend
+    "rent-a-girlfriend": "kanojo okarishimasu",
+    "rent a girlfriend": "kanojo okarishimasu",
+    "kanokari": "kanojo okarishimasu",
+
+    # Spy x Family
+    "spy x family": "spy x family",
+    "spy family": "spy x family",
+
+    # Blue Lock & Sports
+    "blue lock": "blue lock",
+    "kuroko's basketball": "kuroko no basuke",
+    "kuroko no basket": "kuroko no basuke",
+    "haikyuu": "haikyuu",
+    "haikyu": "haikyuu",
+    "slam dunk": "slam dunk",
+    "ao ashi": "ao ashi",
+    "hajime no ippo": "hajime no ippo",
+
+    # Tokyo Ghoul & Steins;Gate -> Primary first season
+    "tokyo ghoul:re": "tokyo ghoul",
+    "tokyo ghoul re": "tokyo ghoul",
+    "tokyo ghoul": "tokyo ghoul",
+    "steins;gate": "steins gate",
+    "steins gate": "steins gate",
+
+    # Death Note & Code Geass
+    "death note": "death note",
+    "code geass": "code geass",
+    "cowboy bebop": "cowboy bebop",
+    "neon genesis evangelion": "shin seiki evangelion",
+    "evangelion": "evangelion",
+
+    # Parasyte & Erased
+    "parasyte: the maxim": "kiseijuu",
+    "parasyte the maxim": "kiseijuu",
+    "parasyte": "kiseijuu",
+    "kiseijuu": "kiseijuu",
+    "erased": "boku dake ga inai machi",
+    "your lie in april": "shigatsu wa kimi no uso",
+    "shigatsu wa kimi no uso": "shigatsu wa kimi no uso",
+    "anohana": "ano hi mita hana",
+    "the flower we saw that day": "ano hi mita hana",
+    "clannad": "clannad",
+    "angel beats": "angel beats",
+    "violet evergarden": "violet evergarden",
+
+    # Fire Force & Black Clover
+    "fire force": "enen no shouboutai",
+    "enen no shouboutai": "enen no shouboutai",
+    "black clover": "black clover",
+    "vinland saga": "vinland saga",
+    "tokyo revengers": "tokyo revengers",
+    "assassination classroom": "ansatsu kyoushitsu",
+    "ansatsu kyoushitsu": "ansatsu kyoushitsu",
+    "the promised neverland": "yakusoku no neverland",
+    "yakusoku no neverland": "yakusoku no neverland",
+    "tpn": "yakusoku no neverland",
+    "made in abyss": "made in abyss",
+    "cyberpunk: edgerunners": "cyberpunk edgerunners",
+    "cyberpunk edgerunners": "cyberpunk edgerunners",
+    "edgerunners": "cyberpunk edgerunners",
+
+    # Fate series
+    "fate/stay night": "fate stay night",
+    "fate stay night": "fate stay night",
+    "fate/zero": "fate zero",
+    "fate zero": "fate zero",
+    "fate grand order": "fate grand order",
+
+    # Ghibli
+    "spirited away": "sen to chihiro",
+    "princess mononoke": "mononoke hime",
+    "howl's moving castle": "howl no ugoku shiro",
+    "howls moving castle": "howl no ugoku shiro",
+    "my neighbor totoro": "tonari no totoro",
+    "kiki's delivery service": "majo no takkyuubin",
+    "grave of the fireflies": "hotaru no haka",
+
+    # Miscellaneous Popular
+    "bocchi the rock": "bocchi the rock",
+    "bocchi": "bocchi the rock",
+    "k-on": "k-on",
+    "kon": "k-on",
+    "laid-back camp": "yuru camp",
+    "laid back camp": "yuru camp",
+    "yuru camp": "yuru camp",
+    "komi can't communicate": "komi-san wa komyushou",
+    "komi cant communicate": "komi-san wa komyushou",
+    "my happy marriage": "watashi no shiawase na kekkon",
+    "the dangers in my heart": "boku no kokoro no yabai yatsu",
+    "dandadan": "dandadan",
+    "wind breaker": "wind breaker",
+    "look back": "look back",
+    "pluto": "pluto",
+    "odd taxi": "odd taxi",
+    "mob psycho": "mob psycho 100",
+    "mob psycho 100": "mob psycho 100",
+    "gurren lagann": "tengen toppa gurren lagann",
+    "kill la kill": "kill la kill",
+    "akame ga kill": "akame ga kill",
+    "noragami": "noragami",
+    "bungo stray dogs": "bungou stray dogs",
+    "bungou stray dogs": "bungou stray dogs",
+    "black butler": "kuroshitsuji",
+    "kuroshitsuji": "kuroshitsuji",
+    "dororo": "dororo",
+    "dorohedoro": "dorohedoro",
+    "grand blue": "grand blue",
+    "prison school": "prison school",
+    "monster": "monster",
+    "banana fish": "banana fish",
+    "great pretender": "great pretender",
+    "psycho pass": "psycho-pass",
+    "psycho-pass": "psycho-pass",
+    "another": "another",
+    "mirai nikki": "mirai nikki",
+    "future diary": "mirai nikki",
+    "elfen lied": "elfen lied",
+    "deadman wonderland": "deadman wonderland",
+    "danganronpa": "danganronpa",
+    "saiki k": "saiki kusuo",
+    "the disastrous life of saiki k": "saiki kusuo",
+    "horimiya": "horimiya",
+    "toradora": "toradora",
+    "golden time": "golden time",
+    "overlord": "overlord",
+    "no game no life": "no game no life",
+    "ngnl": "no game no life",
+    "naruto": "naruto",
+    "naruto shippuden": "naruto shippuuden",
+    "naruto shippuuden": "naruto shippuuden",
+    "boruto": "boruto",
+    "one piece": "one piece",
+    "dragon ball": "dragon ball",
+    "dragon ball z": "dragon ball z",
+    "dbz": "dragon ball z",
+    "dbs": "dragon ball super"
+}
+
+# Pre-sort aliases by length of key descending so longer phrases match first
+ANIME_ALIASES_SORTED = sorted(ANIME_ALIASES.items(), key=lambda x: len(x[0]), reverse=True)
+
+def resolve_search_query(q):
+    """
+    Normalizes Turkish characters and replaces English titles, popular nicknames,
+    or abbreviations with their Romaji catalog equivalents.
+    Supports phrase-level substring replacement (e.g. 'attack on titan season 2' -> 'shingeki no kyojin season 2').
+    """
+    if not q:
+        return "", False
+    q_norm = normalize_search_text(q.strip())
+    q_compact = compact_search_text(q)
+
+    # 1. Exact or compact dictionary hit
+    if q_norm in ANIME_ALIASES:
+        return ANIME_ALIASES[q_norm], True
+    if q_compact in ANIME_ALIASES:
+        return ANIME_ALIASES[q_compact], True
+
+    # 2. Substring & acronym replacement in longer user queries
+    modified = q_norm
+    for eng, romaji in ANIME_ALIASES_SORTED:
+        if ' ' in eng or len(eng) >= 5:
+            if eng in modified:
+                return modified.replace(eng, romaji), True
+        else:
+            pattern = r'\b' + re.escape(eng) + r'\b'
+            if re.search(pattern, modified):
+                return re.sub(pattern, romaji, modified), True
+
+    # 3. Partial English query: user typed "att", "attack", "demon", "slayer", "solo", "hero", etc.
+    if len(q_norm) >= 3:
+        # 3a. Any alias starts with q_norm (e.g. "att" or "attack" -> "attack on titan")
+        for eng, romaji in ANIME_ALIASES_SORTED:
+            if eng.startswith(q_norm):
+                return romaji, True
+
+        # 3b. Any individual word in alias starts with or equals q_norm (e.g. "titan" -> "shingeki no kyojin")
+        for eng, romaji in ANIME_ALIASES_SORTED:
+            words = re.split(r'[\s:._\-\/!?,;\'"()]+', eng)
+            if any(w.startswith(q_norm) or w == q_norm for w in words):
+                return romaji, True
+
+    return q_norm, False
+
+def ensure_anime_catalog():
+    """Loads all anime into memory for instantaneous, intelligent search"""
+    global ANIME_CATALOG
+    if ANIME_CATALOG:
+        return
+    with ANIME_CATALOG_LOCK:
+        if ANIME_CATALOG:
+            return
+        cat = []
+        if os.path.isfile(DB_PATH):
+            try:
+                con = get_db_connection()
+                cur = con.cursor()
+                cur.execute("SELECT id, slug, baslik, bolum_sayisi FROM anime ORDER BY bolum_sayisi DESC, baslik ASC")
+                rows = cur.fetchall()
+                con.close()
+                for r in rows:
+                    slug = r['slug']
+                    title = r['baslik']
+                    info = get_anime_info(slug) or {}
+                    jp = info.get('Japonca', '')
+                    genres = [g.lower() for g in info.get('Anime Türü', [])]
+                    cat.append({
+                        'id': r['id'],
+                        'slug': slug,
+                        'title': title,
+                        'episodes_count': r['bolum_sayisi'],
+                        'title_norm': normalize_search_text(title),
+                        'slug_norm': normalize_search_text(slug.replace('-', ' ')),
+                        'compact_title': compact_search_text(title),
+                        'compact_slug': compact_search_text(slug),
+                        'japanese_norm': normalize_search_text(jp),
+                        'genres': genres
+                    })
+                ANIME_CATALOG = cat
+                print(f"[Arama Dizini] Veritabanından {len(ANIME_CATALOG)} anime belleğe yüklendi.")
+                return
+            except Exception as e:
+                print(f"[Arama Dizini Yükleme Hatası] {e}")
+
+        # Fallback from ANIME_META if DB is downloading on Render
+        if ANIME_META:
+            idx = 1
+            for slug, m in ANIME_META.items():
+                title = slug.replace('-', ' ').title()
+                jp = m.get('japanese', '')
+                genres = [g.lower() for g in m.get('genres', [])]
+                cat.append({
+                    'id': idx,
+                    'slug': slug,
+                    'title': title,
+                    'episodes_count': 12,
+                    'title_norm': normalize_search_text(title),
+                    'slug_norm': normalize_search_text(slug.replace('-', ' ')),
+                    'compact_title': compact_search_text(title),
+                    'compact_slug': compact_search_text(slug),
+                    'japanese_norm': normalize_search_text(jp),
+                    'genres': genres
+                })
+                idx += 1
+            ANIME_CATALOG = cat
+            print(f"[Arama Dizini] Metadata dosyasından {len(ANIME_CATALOG)} anime belleğe yüklendi.")
+
+def search_anime_catalog(q, genre=None, sort='popular'):
+    """Fast in-memory search with tokenization, compact matching, and relevance ranking"""
+    ensure_anime_catalog()
+    if not ANIME_CATALOG:
+        return []
+
+    q_clean = (q or '').strip()
+    q_norm = normalize_search_text(q_clean)
+    q_compact = compact_search_text(q_clean)
+    genre_clean = (genre or '').strip().lower()
+
+    # Pre-split query into tokens by whitespace and punctuation
+    tokens = [w for w in re.split(r'[\s:._\-\/!?,;\'"()]+', q_norm) if w]
+
+    # Check alias & substring resolution
+    resolved_q, is_alias = resolve_search_query(q_clean)
+    resolved_tokens = []
+    if is_alias:
+        resolved_tokens = [w for w in re.split(r'[\s:._\-\/!?,;\'"()]+', normalize_search_text(resolved_q)) if w]
+
+    # Pre-filter by genre if specified
+    genre_slug_set = None
+    if genre_clean:
+        genre_slug_set = GENRE_INDEX.get(genre_clean)
+
+    results = []
+
+    for a in ANIME_CATALOG:
+        # Genre filter
+        if genre_slug_set is not None and a['slug'] not in genre_slug_set:
+            continue
+
+        if not q_clean:
+            # No search query, just genre/catalog browsing
+            results.append((0, a))
+            continue
+
+        # 1. Check Token Matching: Every token must match title, slug, or japanese name
+        token_match = False
+        if tokens:
+            token_match = all(
+                (t in a['title_norm']) or (t in a['slug_norm']) or (t in a['japanese_norm'])
+                for t in tokens
+            )
+
+        # 2. Check Compact Matching (e.g. 'rezero' matching 're:zero', 'fatestay' matching 'fate/stay')
+        compact_match = False
+        if len(q_compact) >= 3:
+            compact_match = (q_compact in a['compact_title']) or (q_compact in a['compact_slug'])
+
+        # 3. Check Resolved / Alias Token Matching
+        alias_match = False
+        if resolved_tokens:
+            alias_match = all(
+                (t in a['title_norm']) or (t in a['slug_norm']) or (t in a['japanese_norm'])
+                for t in resolved_tokens
+            )
+
+        if not (token_match or compact_match or alias_match):
+            continue
+
+        # Calculate relevance score (higher is better)
+        score = 0
+        
+        # Exact match
+        if a['title_norm'] == q_norm or a['slug'] == q_norm or a['compact_title'] == q_compact:
+            score += 2500
+        # Exact match on resolved alias
+        elif alias_match and (a['title_norm'] == resolved_q or a['slug'] == resolved_q):
+            score += 2400
+        # Title starts with query / compact query
+        elif a['title_norm'].startswith(q_norm) or a['slug_norm'].startswith(q_norm):
+            score += 1800
+        elif alias_match and (a['title_norm'].startswith(resolved_q) or a['slug_norm'].startswith(resolved_q)):
+            score += 1700
+        elif len(q_compact) >= 3 and (a['compact_title'].startswith(q_compact) or a['compact_slug'].startswith(q_compact)):
+            score += 1600
+        # Contiguous phrase match in title or slug
+        elif q_norm in a['title_norm'] or q_norm in a['slug_norm']:
+            score += 1200
+        elif alias_match and (resolved_q in a['title_norm'] or resolved_q in a['slug_norm']):
+            score += 1100
+        # Compact substring match
+        elif compact_match:
+            score += 900
+        # Multi-token match
+        elif token_match:
+            score += 600
+            # Extra bonus if first token is at the start
+            if tokens and (a['title_norm'].startswith(tokens[0]) or a['slug_norm'].startswith(tokens[0])):
+                score += 300
+        elif alias_match:
+            score += 600
+            if resolved_tokens and (a['title_norm'].startswith(resolved_tokens[0]) or a['slug_norm'].startswith(resolved_tokens[0])):
+                score += 300
+
+        # Small popularity boost (up to 100 points based on episode count)
+        score += min(100, (a.get('episodes_count') or 0) * 0.5)
+
+        results.append((score, a))
+
+    # Sorting
+    if q_clean and sort == 'popular':
+        results.sort(key=lambda item: (item[0], item[1].get('episodes_count', 0)), reverse=True)
+    elif sort == 'az':
+        results.sort(key=lambda item: item[1]['title'].lower())
+    elif sort == 'za':
+        results.sort(key=lambda item: item[1]['title'].lower(), reverse=True)
+    elif sort == 'episodes':
+        results.sort(key=lambda item: item[1].get('episodes_count', 0), reverse=True)
+    else:
+        results.sort(key=lambda item: item[1].get('episodes_count', 0), reverse=True)
+
+    return [item[1] for item in results]
+
 def clean_anime_title(title):
     if not title:
         return ""
@@ -298,6 +866,40 @@ class AnimeHandler(SimpleHTTPRequestHandler):
         limit = min(60, max(12, int(query.get('limit', ['24'])[0])))
         offset = (page - 1) * limit
 
+        # 1. In-Memory Intelligent Search Engine (Handles punctuation, multi-word, compact, aliases, Turkish folding)
+        ensure_anime_catalog()
+        if ANIME_CATALOG:
+            all_matches = search_anime_catalog(q, genre=genre, sort=sort)
+            total = len(all_matches)
+            paged = all_matches[offset:offset + limit]
+
+            items = []
+            for r in paged:
+                slug = r['slug']
+                info = get_anime_info(slug) or {}
+                anime_genres = info.get('Anime Türü', []) or r.get('genres', [])
+
+                items.append({
+                    'id': r['id'],
+                    'slug': slug,
+                    'title': r['title'],
+                    'episodes_count': r.get('episodes_count', 0),
+                    'poster': fix_poster_url(slug, r['title']),
+                    'score': info.get('Puanı'),
+                    'category': info.get('Kategori', 'TV'),
+                    'genres': anime_genres[:3],
+                    'summary': (info.get('Özet') or '')[:140] + '...' if info.get('Özet') else ''
+                })
+
+            self.send_json({
+                'total': total,
+                'page': page,
+                'limit': limit,
+                'items': items
+            })
+            return
+
+        # 2. Database Fallback (Tokenized multi-word search)
         con = get_db_connection()
         cur = con.cursor()
 
@@ -305,8 +907,16 @@ class AnimeHandler(SimpleHTTPRequestHandler):
         params = []
 
         if q:
-            sql += " AND (baslik LIKE ? OR slug LIKE ?)"
-            params.extend([f"%{q}%", f"%{q}%"])
+            resolved_q, is_alias = resolve_search_query(q)
+            target_q = resolved_q if is_alias else q
+            tokens = [w for w in re.split(r'[\s:._\-\/!?,;\'"()]+', target_q) if w]
+            if tokens:
+                for t in tokens:
+                    sql += " AND (baslik LIKE ? OR slug LIKE ?)"
+                    params.extend([f"%{t}%", f"%{t}%"])
+            else:
+                sql += " AND (baslik LIKE ? OR slug LIKE ?)"
+                params.extend([f"%{target_q}%", f"%{target_q}%"])
 
         # Genre pre-filter: use GENRE_INDEX to get matching slugs BEFORE SQL
         if genre:
@@ -683,7 +1293,10 @@ class AnimeHandler(SimpleHTTPRequestHandler):
 
             # Stream chunks
             while True:
-                chunk = res.read(64 * 1024)
+                try:
+                    chunk = res.read(64 * 1024)
+                except Exception:
+                    break
                 if not chunk:
                     break
                 try:
@@ -804,6 +1417,7 @@ def run():
     
     # Build genre index on startup (fast, ~1-2s)
     build_genre_index()
+    ensure_anime_catalog()
     
     # Launch background memory preloader
     threading.Thread(target=preload_popular_covers, daemon=True).start()
