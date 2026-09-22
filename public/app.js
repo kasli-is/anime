@@ -12,14 +12,14 @@ const State = {
   genre: '',
   sort: 'popular',
   query: '',
-  
+
   // Active viewing
   currentAnime: null,
   currentEpisodes: [],
   activeEpisodeIndex: 0,
   activeLinkIndex: 0,
   activeBatchIndex: 0,
-  
+
   // Player state
   playerMode: 'native', // 'native' or 'iframe'
   userSpeed: 1.0,
@@ -28,18 +28,20 @@ const State = {
   isScrubbing: false,
   controlsTimeout: null,
   controlsVisible: true,
-  
+
   // Storage
   favorites: new Set(), // Set of anime slugs
   favoriteEpisodes: {}, // Map of 'animeSlug_epSlug' -> episode object
   favTab: 'animes', // 'animes' or 'episodes'
-  history: []
+  history: [],
+  episodeTimes: {}
 };
 
 // Storage Keys
 const STORAGE_FAVS = 'turkanime_favorites_v1';
 const STORAGE_FAV_EPISODES = 'turkanime_fav_episodes_v1';
 const STORAGE_HISTORY = 'turkanime_history_v1';
+const STORAGE_EPISODE_TIMES = 'turkanime_ep_times_v1';
 const STORAGE_VOLUME = 'turkanime_volume_v1';
 
 // ==========================================
@@ -53,10 +55,10 @@ const DOM = {
   navFavorites: document.getElementById('nav-btn-favorites'),
   historyBadge: document.getElementById('history-badge'),
   favBadge: document.getElementById('fav-badge'),
-  
+
   globalSearch: document.getElementById('global-search'),
   clearSearch: document.getElementById('clear-search'),
-  
+
   // Shelves
   sectionHistory: document.getElementById('section-history'),
   historyGrid: document.getElementById('history-grid'),
@@ -70,7 +72,7 @@ const DOM = {
   favEpCount: document.getElementById('fav-ep-count'),
   favoritesAnimesGrid: document.getElementById('favorites-animes-grid'),
   favoritesEpisodesGrid: document.getElementById('favorites-episodes-grid'),
-  
+
   // Catalog
   sectionCatalog: document.getElementById('section-catalog'),
   genresContainer: document.getElementById('genres-container'),
@@ -86,12 +88,12 @@ const DOM = {
   pageJumpInput: document.getElementById('page-jump-input'),
   btnGoPage: document.getElementById('btn-go-page'),
   pageInfo: document.getElementById('page-info'),
-  
+
   // Search Dropdown
   searchDropdown: document.getElementById('search-dropdown'),
   searchDropdownResults: document.getElementById('search-dropdown-results'),
   searchDropdownFooter: document.getElementById('search-dropdown-footer'),
-  
+
   // Detail Modal
   detailModal: document.getElementById('detail-modal'),
   btnCloseDetail: document.getElementById('btn-close-detail'),
@@ -112,7 +114,7 @@ const DOM = {
   episodesGrid: document.getElementById('episodes-grid'),
   relatedSeasonsSection: document.getElementById('related-seasons-section'),
   relatedSeasonsGrid: document.getElementById('related-seasons-grid'),
-  
+
   // Video Player Modal
   playerModal: document.getElementById('player-modal'),
   playerWrapper: document.getElementById('player-wrapper'),
@@ -123,7 +125,10 @@ const DOM = {
   btnTheaterMode: document.getElementById('btn-theater-mode'),
   btnHotkeys: document.getElementById('btn-hotkeys'),
   btnExternalLink: document.getElementById('btn-external-link'),
-  
+  btnCenterPlay: document.getElementById('btn-center-play'),
+  centerIconPlay: document.querySelector('.center-icon-play'),
+  centerIconPause: document.querySelector('.center-icon-pause'),
+
   // Player Screen & Native Video
   playerScreenContainer: document.getElementById('player-screen-container'),
   nativeContainer: document.getElementById('native-player-container'),
@@ -139,7 +144,7 @@ const DOM = {
   resumeText: document.getElementById('resume-text'),
   bufferingSpinner: document.getElementById('buffering-spinner'),
   playerControlsBar: document.getElementById('player-controls-bar'),
-  
+
   // Controls
   progressContainer: document.getElementById('progress-container'),
   progressHoverTime: document.getElementById('progress-hover-time'),
@@ -165,7 +170,7 @@ const DOM = {
   ctrlFullscreen: document.getElementById('ctrl-fullscreen'),
   iconFsEnter: document.querySelector('.icon-fs-enter'),
   iconFsExit: document.querySelector('.icon-fs-exit'),
-  
+
   // Player Nav Bar (Immediately below video)
   btnPlayerPrevEp: document.getElementById('btn-player-prev-ep'),
   btnPlayerNextEp: document.getElementById('btn-player-next-ep'),
@@ -175,12 +180,12 @@ const DOM = {
   iframeContainer: document.getElementById('iframe-player-container'),
   embedIframe: document.getElementById('embed-iframe'),
   iframeDirectLink: document.getElementById('iframe-direct-link'),
-  
+
   // Bottom Panels
   providerTabs: document.getElementById('provider-tabs'),
   quickEpisodesGrid: document.getElementById('quick-episodes-grid'),
   quickEpCount: document.getElementById('quick-ep-count'),
-  
+
   // Shortcuts Modal
   shortcutsModal: document.getElementById('shortcuts-modal'),
   btnCloseShortcuts: document.getElementById('btn-close-shortcuts')
@@ -193,7 +198,7 @@ function getEpisodeNumberBadge(ep, index) {
   const name = (ep && ep.name) ? ep.name : '';
   const m1 = name.match(/(\d+)\s*\.\s*Bölüm/i);
   if (m1) return `${m1[1]}. Bölüm`;
-  
+
   const m2 = name.match(/Bölüm\s*(\d+)/i);
   if (m2) return `${m2[1]}. Bölüm`;
 
@@ -226,11 +231,29 @@ function loadStorage() {
     const favs = JSON.parse(localStorage.getItem(STORAGE_FAVS) || '[]');
     State.favorites = new Set(favs);
     State.favoriteEpisodes = JSON.parse(localStorage.getItem(STORAGE_FAV_EPISODES) || '{}');
-    State.history = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || '[]');
+    State.episodeTimes = JSON.parse(localStorage.getItem(STORAGE_EPISODE_TIMES) || '{}');
+
+    const rawHistory = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || '[]');
+    // Keep only the most recent episode per anime
+    const seenAnimes = new Set();
+    State.history = [];
+    for (const h of rawHistory) {
+      if (h && h.animeSlug && !seenAnimes.has(h.animeSlug)) {
+        seenAnimes.add(h.animeSlug);
+        State.history.push(h);
+      }
+      if (h && h.animeSlug && h.episodeSlug && typeof h.currentTime === 'number') {
+        const key = `${h.animeSlug}_${h.episodeSlug}`;
+        if (typeof State.episodeTimes[key] !== 'number') {
+          State.episodeTimes[key] = h.currentTime;
+        }
+      }
+    }
   } catch (e) {
     State.favorites = new Set();
     State.favoriteEpisodes = {};
     State.history = [];
+    State.episodeTimes = {};
   }
   updateBadges();
 }
@@ -243,23 +266,37 @@ function saveFavorites() {
 }
 
 function saveHistory(entry) {
-  // Remove existing entry for same episode
-  State.history = State.history.filter(h => !(h.animeSlug === entry.animeSlug && h.episodeSlug === entry.episodeSlug));
+  if (!entry || !entry.animeSlug) return;
+  // Remove any previous entry for this anime so each anime appears ONLY ONCE with its latest episode
+  State.history = State.history.filter(h => h.animeSlug !== entry.animeSlug);
   State.history.unshift(entry);
   if (State.history.length > 30) State.history.pop();
   localStorage.setItem(STORAGE_HISTORY, JSON.stringify(State.history));
+
+  // Save episode specific timestamp in episodeTimes
+  if (entry.episodeSlug) {
+    State.episodeTimes[`${entry.animeSlug}_${entry.episodeSlug}`] = entry.currentTime;
+    try {
+      localStorage.setItem(STORAGE_EPISODE_TIMES, JSON.stringify(State.episodeTimes));
+    } catch (e) { }
+  }
+
   updateBadges();
   renderHistoryShelf();
 }
 
 function removeFromHistory(animeSlug, episodeSlug) {
-  State.history = State.history.filter(h => !(h.animeSlug === animeSlug && h.episodeSlug === episodeSlug));
+  State.history = State.history.filter(h => h.animeSlug !== animeSlug);
   localStorage.setItem(STORAGE_HISTORY, JSON.stringify(State.history));
   updateBadges();
   renderHistoryShelf();
 }
 
 function getSavedEpisodeTime(animeSlug, episodeSlug) {
+  const key = `${animeSlug}_${episodeSlug}`;
+  if (State.episodeTimes && typeof State.episodeTimes[key] === 'number') {
+    return State.episodeTimes[key];
+  }
   const item = State.history.find(h => h.animeSlug === animeSlug && h.episodeSlug === episodeSlug);
   return item ? item.currentTime : 0;
 }
@@ -311,7 +348,7 @@ function toggleFavoriteEpisode(anime, ep, epIndex) {
   }
   saveFavorites();
   updatePlayerFavBtnState();
-  
+
   // Update chip heart states in UI
   document.querySelectorAll(`.ep-fav-btn-${CSS.escape(key)}`).forEach(b => {
     const isFav = !!State.favoriteEpisodes[key];
@@ -341,19 +378,20 @@ async function fetchAnimes() {
     </div>
   `;
 
+  const resolved = resolveAnimeSearchQuery(State.query);
   const params = new URLSearchParams({
     page: State.page,
     limit: State.limit,
     genre: State.genre,
     sort: State.sort,
-    q: State.query
+    q: resolved.query
   });
 
   try {
     const res = await fetch(`/api/animes?${params}`);
     const data = await res.json();
     State.total = data.total;
-    renderAnimeGrid(data.items);
+    renderAnimeGrid(data.items, resolved);
     renderPagination();
   } catch (err) {
     DOM.animeGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #ef4444;">Animeler yüklenirken hata oluştu: ${err.message}</div>`;
@@ -364,7 +402,7 @@ async function fetchGenres() {
   try {
     const res = await fetch('/api/genres');
     const genres = await res.json();
-    
+
     // Clear and ensure "Tümü" is the default first pill
     DOM.genresContainer.innerHTML = '<button class="genre-pill active" data-genre="">Tümü</button>';
 
@@ -385,7 +423,7 @@ async function openAnimeDetail(slug) {
     const res = await fetch(`/api/anime/${slug}`);
     const anime = await res.json();
     State.currentAnime = anime;
-    
+
     // Populate modal
     DOM.detailPoster.src = anime.poster || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22420%22 fill=%22%23161c28%22><text x=%2250%%22 y=%2250%%22 fill=%22%2364748b%22 font-size=%2222%22 text-anchor=%22middle%22>Poster</text></svg>';
     DOM.detailTitle.textContent = anime.title;
@@ -400,13 +438,13 @@ async function openAnimeDetail(slug) {
     DOM.detailStudio.textContent = anime.studio ? `Stüdyo: ${anime.studio}` : '';
     DOM.detailDates.textContent = anime.start_date || '';
     DOM.detailSummary.textContent = cleanHtmlText(anime.summary) || 'Açıklama bulunmuyor.';
-    
+
     // Genres
     DOM.detailGenres.innerHTML = (anime.genres || []).map(g => `<span class="genre-tag">${g}</span>`).join('');
-    
+
     // Favorite button state
     updateDetailFavBtn();
-    
+
     // Fetch episodes
     DOM.episodesGrid.innerHTML = '<div style="grid-column: 1/-1; color: var(--text-dim);">Bölümler yükleniyor...</div>';
     DOM.detailModal.style.display = 'flex';
@@ -438,7 +476,7 @@ function updateDetailFavBtn() {
 // ==========================================
 // RENDERERS
 // ==========================================
-function renderAnimeGrid(items) {
+function renderAnimeGrid(items, resolved = {}) {
   if (!items || items.length === 0) {
     DOM.resultsCount.textContent = 'Sonuç bulunamadı';
     DOM.animeGrid.innerHTML = `
@@ -452,7 +490,13 @@ function renderAnimeGrid(items) {
     return;
   }
 
-  DOM.resultsCount.textContent = `${State.total.toLocaleString('tr-TR')} Anime bulundu (Sayfa ${State.page})`;
+  if (resolved.aliasFound && State.query) {
+    DOM.resultsCount.textContent = `"${State.query}" [${resolved.targetRomaji}] için ${State.total.toLocaleString('tr-TR')} Anime bulundu (Sayfa ${State.page})`;
+  } else if (State.query) {
+    DOM.resultsCount.textContent = `"${State.query}" için ${State.total.toLocaleString('tr-TR')} Anime bulundu (Sayfa ${State.page})`;
+  } else {
+    DOM.resultsCount.textContent = `${State.total.toLocaleString('tr-TR')} Anime listelendi (Sayfa ${State.page})`;
+  }
   DOM.animeGrid.innerHTML = '';
 
   items.forEach(anime => {
@@ -602,10 +646,25 @@ function renderHistoryShelf() {
     return;
   }
 
+  // Deduplicate: only show latest watched episode per anime
+  const seenAnimes = new Set();
+  const uniqueHistory = [];
+  for (const item of State.history) {
+    if (item && item.animeSlug && !seenAnimes.has(item.animeSlug)) {
+      seenAnimes.add(item.animeSlug);
+      uniqueHistory.push(item);
+    }
+  }
+
+  if (uniqueHistory.length === 0) {
+    DOM.sectionHistory.style.display = 'none';
+    return;
+  }
+
   DOM.sectionHistory.style.display = 'block';
   DOM.historyGrid.innerHTML = '';
 
-  State.history.slice(0, 8).forEach(item => {
+  uniqueHistory.slice(0, 8).forEach(item => {
     const percent = Math.min(100, Math.round((item.currentTime / (item.duration || 1400)) * 100));
     const card = document.createElement('div');
     card.className = 'history-card';
@@ -850,15 +909,365 @@ function sortLinksByReliability(links) {
 }
 
 // ==========================================
-// SEARCH DROPDOWN (Instant Autocomplete)
+// SEARCH DROPDOWN & ALIAS ENGINE
 // ==========================================
 let searchDropdownTimeout = null;
 let activeDropdownIndex = -1;
 
+// Comprehensive English -> Romaji alias dictionary
+const ANIME_ALIASES_MAP = {
+  // Attack on Titan -> Always primary first season (shingeki no kyojin)
+  "attack on titan": "shingeki no kyojin",
+  "attack titan": "shingeki no kyojin",
+  "aot": "shingeki no kyojin",
+  "snk": "shingeki no kyojin",
+
+  // Re:Zero
+  "re:zero - starting life in another world": "re zero kara hajimeru isekai seikatsu",
+  "re:zero starting life in another world": "re zero kara hajimeru isekai seikatsu",
+  "starting life in another world": "re zero kara hajimeru isekai seikatsu",
+  "re zero": "re:zero",
+  "re:zero": "re:zero",
+  "rezero": "re:zero",
+
+  // Demon Slayer
+  "demon slayer: kimetsu no yaiba": "kimetsu no yaiba",
+  "demon slayer kimetsu no yaiba": "kimetsu no yaiba",
+  "demon slayer": "kimetsu no yaiba",
+  "kimetsu": "kimetsu no yaiba",
+
+  // My Hero Academia
+  "my hero academia": "boku no hero academia",
+  "mha": "boku no hero academia",
+  "bnha": "boku no hero academia",
+
+  // Solo Leveling
+  "solo leveling": "ore dake level up",
+  "sololeveling": "ore dake level up",
+
+  // Jujutsu Kaisen
+  "jujutsu kaisen": "jujutsu kaisen",
+  "jjk": "jujutsu kaisen",
+
+  // Chainsaw Man
+  "chainsaw man": "chainsaw man",
+  "csm": "chainsaw man",
+
+  // Hunter x Hunter
+  "hunter x hunter": "hunter x hunter",
+  "hxh": "hunter x hunter",
+
+  // Bleach -> Primary first season
+  "bleach: thousand-year blood war": "bleach",
+  "bleach thousand year blood war": "bleach",
+  "bleach tybw": "bleach",
+  "thousand year blood war": "bleach",
+  "tybw": "bleach",
+  "bleach": "bleach",
+
+  // Slime
+  "that time i got reincarnated as a slime": "tensei shitara slime",
+  "reincarnated as a slime": "tensei shitara slime",
+  "tensura": "tensei shitara slime",
+  "slime": "tensei shitara slime",
+
+  // Mushoku Tensei
+  "jobless reincarnation": "mushoku tensei",
+  "mushoku tensei": "mushoku tensei",
+
+  // Eminence in Shadow
+  "the eminence in shadow": "kage no jitsuryokusha",
+  "eminence in shadow": "kage no jitsuryokusha",
+  "kagejitsu": "kage no jitsuryokusha",
+
+  // Seven Deadly Sins
+  "the seven deadly sins": "nanatsu no taizai",
+  "seven deadly sins": "nanatsu no taizai",
+  "7 deadly sins": "nanatsu no taizai",
+
+  // Frieren
+  "frieren: beyond journey's end": "sousou no frieren",
+  "frieren beyond journey's end": "sousou no frieren",
+  "frieren beyond journeys end": "sousou no frieren",
+  "frieren": "sousou no frieren",
+
+  // Delicious in Dungeon
+  "delicious in dungeon": "dungeon meshi",
+  "dungeon meshi": "dungeon meshi",
+
+  // Shield Hero
+  "the rising of the shield hero": "tate no yuusha",
+  "rising of the shield hero": "tate no yuusha",
+  "shield hero": "tate no yuusha",
+
+  // DanMachi
+  "is it wrong to try to pick up girls in a dungeon": "dungeon ni deai",
+  "danmachi": "dungeon ni deai",
+
+  // KonoSuba
+  "god's blessing on this wonderful world": "kono subarashii sekai",
+  "gods blessing on this wonderful world": "kono subarashii sekai",
+  "konosuba": "kono subarashii sekai",
+
+  // Fullmetal Alchemist
+  "fullmetal alchemist: brotherhood": "fullmetal alchemist brotherhood",
+  "fullmetal alchemist brotherhood": "fullmetal alchemist brotherhood",
+  "fullmetal alchemist": "fullmetal alchemist",
+  "fmab": "fullmetal alchemist brotherhood",
+  "fma": "fullmetal alchemist",
+
+  // Sword Art Online
+  "sword art online": "sword art online",
+  "sao": "sword art online",
+
+  // One Punch Man
+  "one punch man": "one punch man",
+  "one-punch man": "one punch man",
+  "opm": "one punch man",
+
+  // Classroom of the Elite
+  "classroom of the elite": "youkoso jitsuryoku",
+  "cote": "youkoso jitsuryoku",
+
+  // Dr. Stone
+  "dr. stone": "dr stone",
+  "dr stone": "dr stone",
+  "drstone": "dr stone",
+
+  // Hell's Paradise
+  "hell's paradise": "jigokuraku",
+  "hells paradise": "jigokuraku",
+  "jigokuraku": "jigokuraku",
+
+  // Kaiju No. 8
+  "kaiju no. 8": "kaijuu 8-gou",
+  "kaiju no 8": "kaijuu 8-gou",
+  "kaiju 8": "kaijuu 8-gou",
+
+  // Oshi no Ko
+  "my star": "oshi no ko",
+  "oshi no ko": "oshi no ko",
+
+  // Your Name & A Silent Voice
+  "your name": "kimi no na wa",
+  "your name.": "kimi no na wa",
+  "a silent voice": "koe no katachi",
+  "the shape of voice": "koe no katachi",
+  "i want to eat your pancreas": "kimi no suizou wo tabetai",
+  "weathering with you": "tenki no ko",
+  "suzume": "suzume no tojimari",
+  "suzume no tojimari": "suzume no tojimari",
+  "5 centimeters per second": "byousoku 5 centimeter",
+
+  // Kaguya-sama
+  "kaguya-sama: love is war": "kaguya-sama",
+  "kaguya sama: love is war": "kaguya-sama",
+  "kaguya-sama love is war": "kaguya-sama",
+  "kaguya sama love is war": "kaguya-sama",
+  "love is war": "kaguya-sama",
+  "kaguya-sama": "kaguya-sama",
+  "kaguya sama": "kaguya-sama",
+
+  // Bunny Girl Senpai
+  "rascal does not dream of bunny girl senpai": "seishun buta yarou",
+  "bunny girl senpai": "seishun buta yarou",
+  "aobuta": "seishun buta yarou",
+
+  // The Angel Next Door
+  "the angel next door spoils me rotten": "otonari no tenshi",
+  "the angel next door": "otonari no tenshi",
+  "angel next door": "otonari no tenshi",
+
+  // My Dress-Up Darling
+  "my dress-up darling": "sono bisque doll",
+  "my dress up darling": "sono bisque doll",
+  "sono bisque doll": "sono bisque doll",
+
+  // The Quintessential Quintuplets
+  "the quintessential quintuplets": "5-toubun no hanayome",
+  "quintessential quintuplets": "5-toubun no hanayome",
+  "5-toubun": "5-toubun no hanayome",
+
+  // Rent-a-Girlfriend
+  "rent-a-girlfriend": "kanojo okarishimasu",
+  "rent a girlfriend": "kanojo okarishimasu",
+  "kanokari": "kanojo okarishimasu",
+
+  // Spy x Family
+  "spy x family": "spy x family",
+  "spy family": "spy x family",
+
+  // Blue Lock & Sports
+  "blue lock": "blue lock",
+  "kuroko's basketball": "kuroko no basuke",
+  "kuroko no basket": "kuroko no basuke",
+  "haikyuu": "haikyuu",
+  "haikyu": "haikyuu",
+  "slam dunk": "slam dunk",
+  "ao ashi": "ao ashi",
+  "hajime no ippo": "hajime no ippo",
+
+  // Tokyo Ghoul & Steins;Gate -> Primary first season
+  "tokyo ghoul:re": "tokyo ghoul",
+  "tokyo ghoul re": "tokyo ghoul",
+  "tokyo ghoul": "tokyo ghoul",
+  "steins;gate": "steins gate",
+  "steins gate": "steins gate",
+
+  // Death Note & Code Geass
+  "death note": "death note",
+  "code geass": "code geass",
+  "cowboy bebop": "cowboy bebop",
+  "neon genesis evangelion": "shin seiki evangelion",
+  "evangelion": "evangelion",
+
+  // Parasyte & Erased
+  "parasyte: the maxim": "kiseijuu",
+  "parasyte the maxim": "kiseijuu",
+  "parasyte": "kiseijuu",
+  "erased": "boku dake ga inai machi",
+  "your lie in april": "shigatsu wa kimi no uso",
+  "anohana": "ano hi mita hana",
+  "the flower we saw that day": "ano hi mita hana",
+  "clannad": "clannad",
+  "angel beats": "angel beats",
+  "violet evergarden": "violet evergarden",
+
+  // Fire Force & Black Clover
+  "fire force": "enen no shouboutai",
+  "black clover": "black clover",
+  "vinland saga": "vinland saga",
+  "tokyo revengers": "tokyo revengers",
+  "assassination classroom": "ansatsu kyoushitsu",
+  "the promised neverland": "yakusoku no neverland",
+  "tpn": "yakusoku no neverland",
+  "made in abyss": "made in abyss",
+  "cyberpunk: edgerunners": "cyberpunk edgerunners",
+  "cyberpunk edgerunners": "cyberpunk edgerunners",
+  "edgerunners": "cyberpunk edgerunners",
+
+  // Fate series
+  "fate/stay night": "fate stay night",
+  "fate stay night": "fate stay night",
+  "fate/zero": "fate zero",
+  "fate zero": "fate zero",
+  "fate grand order": "fate grand order",
+
+  // Ghibli
+  "spirited away": "sen to chihiro",
+  "princess mononoke": "mononoke hime",
+  "howl's moving castle": "howl no ugoku shiro",
+  "howls moving castle": "howl no ugoku shiro",
+  "my neighbor totoro": "tonari no totoro",
+  "kiki's delivery service": "majo no takkyuubin",
+  "grave of the fireflies": "hotaru no haka",
+
+  // Miscellaneous Popular
+  "bocchi the rock": "bocchi the rock",
+  "bocchi": "bocchi the rock",
+  "k-on": "k-on",
+  "kon": "k-on",
+  "laid-back camp": "yuru camp",
+  "laid back camp": "yuru camp",
+  "komi can't communicate": "komi-san wa komyushou",
+  "komi cant communicate": "komi-san wa komyushou",
+  "my happy marriage": "watashi no shiawase na kekkon",
+  "the dangers in my heart": "boku no kokoro no yabai yatsu",
+  "dandadan": "dandadan",
+  "wind breaker": "wind breaker"
+};
+
+// Sort by key length descending so longer phrases like "attack on titan" match before "titan"
+const SEARCH_ALIASES_SORTED = Object.entries(ANIME_ALIASES_MAP).sort((a, b) => b[0].length - a[0].length);
+
+function resolveAnimeSearchQuery(rawQuery) {
+  if (!rawQuery) return { original: '', query: '', aliasFound: false, matchedEnglish: '', targetRomaji: '' };
+  const original = rawQuery.trim();
+  let q = original.toLowerCase();
+
+  // Normalize Turkish characters
+  const charmap = { 'ı': 'i', 'ğ': 'g', 'ü': 'u', 'ş': 's', 'ö': 'o', 'ç': 'c' };
+  for (const [k, v] of Object.entries(charmap)) {
+    q = q.replaceAll(k, v);
+  }
+
+  // 1. Direct query contains full alias (e.g. "attack on titan season 2" -> "shingeki no kyojin season 2")
+  for (const [eng, romaji] of SEARCH_ALIASES_SORTED) {
+    if (eng.includes(' ') || eng.length >= 5) {
+      if (q.includes(eng)) {
+        return {
+          original,
+          query: q.replace(eng, romaji),
+          aliasFound: true,
+          matchedEnglish: eng,
+          targetRomaji: romaji
+        };
+      }
+    } else {
+      const regex = new RegExp(`\\b${eng.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (regex.test(q)) {
+        return {
+          original,
+          query: q.replace(regex, romaji),
+          aliasFound: true,
+          matchedEnglish: eng,
+          targetRomaji: romaji
+        };
+      }
+    }
+  }
+
+  // 2. User typed a prefix or partial of an alias (e.g. "att", "attack", "demon", "slayer", "solo", "leveling")
+  if (q.length >= 3) {
+    // 2a. Any alias starts with q (e.g. "attack on titan".startsWith("attack") or .startsWith("att"))
+    for (const [eng, romaji] of SEARCH_ALIASES_SORTED) {
+      if (eng.startsWith(q)) {
+        return {
+          original,
+          query: romaji,
+          aliasFound: true,
+          matchedEnglish: eng,
+          targetRomaji: romaji
+        };
+      }
+    }
+
+    // 2b. Any word in an alias starts with or equals q (e.g. "titan" -> "shingeki no kyojin", "slayer" -> "kimetsu no yaiba")
+    for (const [eng, romaji] of SEARCH_ALIASES_SORTED) {
+      const words = eng.split(/[\s:._\-\/!?,;'"()]+/).filter(Boolean);
+      if (words.some(w => w.startsWith(q) || w === q)) {
+        return {
+          original,
+          query: romaji,
+          aliasFound: true,
+          matchedEnglish: eng,
+          targetRomaji: romaji
+        };
+      }
+    }
+  }
+
+  return {
+    original,
+    query: q,
+    aliasFound: false,
+    matchedEnglish: '',
+    targetRomaji: ''
+  };
+}
+
 function highlightMatch(text, q) {
   if (!q || !text) return text || '';
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+  const rawTokens = q.split(/[\s:._\-\/!?,;'"()]+/).filter(t => t.length > 0);
+  if (rawTokens.length === 0) return text;
+
+  const pattern = rawTokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  try {
+    const regex = new RegExp(`(${pattern})`, 'gi');
+    return text.replace(regex, '<mark>$1</mark>');
+  } catch (e) {
+    return text;
+  }
 }
 
 function showSearchDropdown(query) {
@@ -881,23 +1290,25 @@ function showSearchDropdown(query) {
   clearTimeout(searchDropdownTimeout);
   searchDropdownTimeout = setTimeout(async () => {
     try {
-      const params = new URLSearchParams({ q: query, limit: 8, page: 1 });
+      const resolved = resolveAnimeSearchQuery(query);
+      const params = new URLSearchParams({ q: resolved.query, limit: 8, page: 1 });
       const res = await fetch(`/api/animes?${params}`);
       const data = await res.json();
-      renderSearchDropdown(data.items, query);
+      renderSearchDropdown(data.items, query, resolved);
     } catch (err) {
       console.error('Search dropdown error:', err);
     }
   }, 150);
 }
 
-function renderSearchDropdown(items, query) {
+function renderSearchDropdown(items, query, resolved = {}) {
   activeDropdownIndex = -1;
   if (!items || items.length === 0) {
+    const displayQ = resolved.aliasFound ? `${query} (${resolved.targetRomaji})` : query;
     DOM.searchDropdownResults.innerHTML = `
       <div class="search-dropdown-empty" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <span>"${query}" ile eşleşen anime bulunamadı</span>
+        <span>"${displayQ}" ile eşleşen anime bulunamadı</span>
       </div>
     `;
     if (DOM.searchDropdownFooter) DOM.searchDropdownFooter.style.display = 'none';
@@ -905,12 +1316,20 @@ function renderSearchDropdown(items, query) {
     return;
   }
 
-  DOM.searchDropdownResults.innerHTML = items.map(anime => `
+  DOM.searchDropdownResults.innerHTML = items.map(anime => {
+    const aliasBadge = (resolved.aliasFound && resolved.matchedEnglish)
+      ? `<span class="search-alias-badge">${resolved.matchedEnglish.toUpperCase()}</span>`
+      : '';
+
+    return `
     <div class="search-dropdown-item" data-slug="${anime.slug}">
       <img src="${anime.poster}" alt="${anime.title}" referrerpolicy="no-referrer" 
            onerror="this.onerror=null; this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2242%22 height=%2258%22 fill=%22%23161c28%22><text x=%2250%%22 y=%2250%%22 fill=%22%2364748b%22 font-size=%2212%22 text-anchor=%22middle%22>Afis</text></svg>'">
       <div class="search-dropdown-item-info">
-        <div class="search-dropdown-item-title">${highlightMatch(anime.title, query)}</div>
+        <div class="search-dropdown-item-title">
+          ${highlightMatch(anime.title, `${query} ${resolved.query || ''}`)}
+          ${aliasBadge}
+        </div>
         <div class="search-dropdown-item-meta">
           <span class="search-dropdown-item-badge">${anime.category || 'TV'}</span>
           <span>${anime.episodes_count} Bölüm</span>
@@ -918,7 +1337,8 @@ function renderSearchDropdown(items, query) {
         </div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   // Dropdown footer to allow viewing full catalog results
   if (DOM.searchDropdownFooter) {
@@ -1032,14 +1452,14 @@ function renderRelatedSeasons(related, currentSlug) {
 async function startEpisode(epIndex, linkIndex = 0) {
   if (!State.currentEpisodes[epIndex]) return;
   State.activeEpisodeIndex = epIndex;
-  
+
   const ep = State.currentEpisodes[epIndex];
   if (ep.links) {
     ep.links = sortLinksByReliability(ep.links);
   }
 
   State.activeLinkIndex = linkIndex;
-  
+
   DOM.playerAnimeName.textContent = State.currentAnime.title;
   DOM.playerEpName.textContent = `${getEpisodeNumberBadge(ep, epIndex)} - ${ep.name}`;
   DOM.playerModal.style.display = 'flex';
@@ -1064,7 +1484,7 @@ function renderProviderTabs(links) {
   links.forEach((link, idx) => {
     const tab = document.createElement('button');
     tab.className = `provider-tab ${idx === State.activeLinkIndex ? 'active' : ''}`;
-    
+
     let badgeHtml = '';
     if (link.can_stream) {
       badgeHtml = '<span class="provider-native-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>YEREL OYNATICI</span>';
@@ -1092,7 +1512,7 @@ function renderProviderTabs(links) {
 function renderQuickEpisodesGrid() {
   const totalEps = State.currentEpisodes.length;
   DOM.quickEpCount.textContent = `${totalEps} Bölüm`;
-  
+
   const currentEp = State.currentEpisodes[State.activeEpisodeIndex];
   if (currentEp) {
     DOM.navEpTitle.textContent = `${getEpisodeNumberBadge(currentEp, State.activeEpisodeIndex)} - ${currentEp.name}`;
@@ -1120,12 +1540,12 @@ function renderQuickEpisodesGrid() {
       </div>
       <div style="display: flex; align-items: center; gap: 0.35rem;">
         <span class="quick-ep-icon">
-          ${isCurrent 
-            ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Oynatılıyor' 
-            : (isWatched 
-                ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> İzlendi' 
-                : '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>')
-          }
+          ${isCurrent
+        ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Oynatılıyor'
+        : (isWatched
+          ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> İzlendi'
+          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>')
+      }
         </span>
         <span class="ep-chip-fav-btn ep-fav-btn-${CSS.escape(favKey)} ${isEpFav ? 'active' : ''}" title="Favorilere Ekle/Çıkar">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="${isEpFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
@@ -1156,8 +1576,8 @@ function renderQuickEpisodesGrid() {
 
 async function loadLink(link) {
   resetPlayerUI();
-  DOM.btnExternalLink.href = link.url;
-  DOM.iframeDirectLink.href = link.url;
+  if (DOM.btnExternalLink) DOM.btnExternalLink.href = link.url;
+  if (DOM.iframeDirectLink) DOM.iframeDirectLink.href = link.url;
 
   // Resolve stream with backend
   DOM.bufferingSpinner.style.display = 'flex';
@@ -1197,7 +1617,7 @@ function enableNativePlayer(streamUrl) {
       video.currentTime = savedTime;
       showResumeBubble(savedTime);
     }
-    video.play().catch(() => {});
+    video.play().catch(() => { });
   };
 
   video.onerror = () => {
@@ -1218,6 +1638,7 @@ function enableIframePlayer(embedUrl) {
 }
 
 function resetPlayerUI() {
+  if (State.clearStallWatchdog) State.clearStallWatchdog();
   DOM.nativeVideo.pause();
   DOM.nativeVideo.src = '';
   DOM.embedIframe.src = '';
@@ -1226,6 +1647,11 @@ function resetPlayerUI() {
   DOM.ctrlCurrentTime.textContent = '00:00';
   DOM.ctrlDuration.textContent = '00:00';
   DOM.resumeBubble.style.display = 'none';
+  if (DOM.btnCenterPlay) {
+    DOM.btnCenterPlay.classList.remove('hidden');
+    if (DOM.centerIconPlay) DOM.centerIconPlay.style.display = 'block';
+    if (DOM.centerIconPause) DOM.centerIconPause.style.display = 'none';
+  }
 }
 
 function showResumeBubble(seconds) {
@@ -1250,14 +1676,19 @@ function setupGestures() {
     clearTimeout(State.controlsTimeout);
 
     if (isVisible) {
-      // If already open, hide immediately
-      DOM.playerControlsBar.classList.add('hidden');
+      // If already open, hide immediately (if playing)
+      if (!DOM.nativeVideo.paused) {
+        DOM.playerControlsBar.classList.add('hidden');
+        if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
+      }
     } else {
       // If hidden, show and schedule auto-hide after 3.5s
       DOM.playerControlsBar.classList.remove('hidden');
+      if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
       if (!DOM.nativeVideo.paused) {
         State.controlsTimeout = setTimeout(() => {
           DOM.playerControlsBar.classList.add('hidden');
+          if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
         }, 3500);
       }
     }
@@ -1330,15 +1761,17 @@ function setupGestures() {
 
   window.addEventListener('pointerup', endHold);
   window.addEventListener('pointercancel', endHold);
-  
+
   // Show controls on mouse move inside player screen (Desktop only, ignore touch pointermove)
   DOM.playerScreenContainer.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'mouse') {
       DOM.playerControlsBar.classList.remove('hidden');
+      if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
       clearTimeout(State.controlsTimeout);
       if (!DOM.nativeVideo.paused) {
         State.controlsTimeout = setTimeout(() => {
           DOM.playerControlsBar.classList.add('hidden');
+          if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
         }, 3500);
       }
     }
@@ -1386,23 +1819,102 @@ function setupControls() {
   video.addEventListener('play', () => {
     DOM.iconPlay.style.display = 'none';
     DOM.iconPause.style.display = 'block';
+    if (DOM.centerIconPlay) DOM.centerIconPlay.style.display = 'none';
+    if (DOM.centerIconPause) DOM.centerIconPause.style.display = 'block';
     scheduleHideControls();
   });
 
   video.addEventListener('pause', () => {
     DOM.iconPlay.style.display = 'block';
     DOM.iconPause.style.display = 'none';
+    if (DOM.centerIconPlay) DOM.centerIconPlay.style.display = 'block';
+    if (DOM.centerIconPause) DOM.centerIconPause.style.display = 'none';
     DOM.playerControlsBar.classList.remove('hidden');
+    if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
     clearTimeout(State.controlsTimeout);
   });
 
+  // ==========================================
+  // AUTO-RECOVERY WATCHDOG (Donma Önleme & Kurtarma)
+  // ==========================================
+  let stallWatchdogTimer = null;
+  let stallRetryCount = 0;
+  let lastWatchedCurrentTime = 0;
+
+  function clearStallWatchdog() {
+    if (stallWatchdogTimer) {
+      clearTimeout(stallWatchdogTimer);
+      stallWatchdogTimer = null;
+    }
+    stallRetryCount = 0;
+  }
+  State.clearStallWatchdog = clearStallWatchdog;
+
+  function triggerStallRecovery() {
+    if (video.paused || video.ended || !video.src) return;
+    if (stallWatchdogTimer) return;
+
+    // Normal tamponlamaya 2.5 saniye mühlet tanı
+    stallWatchdogTimer = setTimeout(() => {
+      stallWatchdogTimer = null;
+      if (video.paused || video.ended || !video.src) return;
+
+      // Video hâlâ veri alamıyorsa veya oynatma ilerlemiyorsa
+      if (video.readyState < 3 || Math.abs(video.currentTime - lastWatchedCurrentTime) < 0.1) {
+        stallRetryCount++;
+        const curTime = video.currentTime;
+        console.warn(`[Auto-Recovery] Donma algılandı (deneme ${stallRetryCount}). Konum: ${curTime.toFixed(1)}s. Bağlantı tazeleniyor...`);
+
+        if (stallRetryCount <= 2) {
+          // Mikro ileri alma (+0.15s): Tarayıcının bayatlayan TCP soketini kapatıp
+          // sunucuya taze bir HTTP Range isteği atmasını zorlar!
+          const maxTarget = (video.duration && video.duration > 1) ? (video.duration - 0.5) : (curTime + 2);
+          video.currentTime = Math.min(maxTarget, curTime + 0.15);
+          video.play().catch(() => { });
+          triggerStallRecovery();
+        } else {
+          // Derin kurtarma: Bağlantıyı sıfırdan aynı saniyeden yeniden aç
+          const currentSrc = video.src;
+          video.src = currentSrc;
+          video.currentTime = curTime;
+          video.play().catch(() => { });
+          clearStallWatchdog();
+        }
+      }
+    }, 2500);
+  }
+
   video.addEventListener('waiting', () => {
     DOM.bufferingSpinner.style.display = 'flex';
+    triggerStallRecovery();
+  });
+
+  video.addEventListener('stalled', () => {
+    triggerStallRecovery();
   });
 
   video.addEventListener('canplay', () => {
     DOM.bufferingSpinner.style.display = 'none';
   });
+
+  video.addEventListener('playing', () => {
+    DOM.bufferingSpinner.style.display = 'none';
+    clearStallWatchdog();
+  });
+
+  video.addEventListener('seeking', () => {
+    clearStallWatchdog();
+  });
+
+  // Arka planda donmayı izleyen nabız (heartbeat) kontrolü
+  setInterval(() => {
+    if (State.playerMode === 'native' && !video.paused && !video.ended && !State.isScrubbing && video.src) {
+      if (video.currentTime > 0 && Math.abs(video.currentTime - lastWatchedCurrentTime) < 0.05 && video.readyState < 3) {
+        triggerStallRecovery();
+      }
+      lastWatchedCurrentTime = video.currentTime;
+    }
+  }, 3500);
 
   video.addEventListener('timeupdate', () => {
     if (State.isScrubbing) return;
@@ -1449,12 +1961,21 @@ function setupControls() {
     State.controlsTimeout = setTimeout(() => {
       if (!DOM.nativeVideo.paused) {
         DOM.playerControlsBar.classList.add('hidden');
+        if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
       }
     }, 3500);
   }
 
-  // Play / Pause Button
+  // Play / Pause Buttons (Bottom Bar and Screen Center)
   DOM.ctrlPlayPause.onclick = togglePlayPause;
+  if (DOM.btnCenterPlay) {
+    DOM.btnCenterPlay.onclick = (e) => {
+      e.stopPropagation();
+      togglePlayPause();
+      DOM.btnCenterPlay.classList.add('active-pulse');
+      setTimeout(() => DOM.btnCenterPlay.classList.remove('active-pulse'), 200);
+    };
+  }
   DOM.ctrlRewind.onclick = () => skipSeconds(-10);
   DOM.ctrlForward.onclick = () => skipSeconds(10);
 
@@ -1508,7 +2029,7 @@ function setupControls() {
 
   window.addEventListener('mousemove', (e) => {
     if (State.isScrubbing) seekMouse(e);
-    
+
     // Hover time preview
     const rect = DOM.progressContainer.getBoundingClientRect();
     if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top - 25 && e.clientY <= rect.bottom + 15) {
@@ -1594,7 +2115,7 @@ function setupControls() {
 
   // Fullscreen
   DOM.ctrlFullscreen.onclick = toggleFullscreen;
-  
+
   const handleFullscreenChange = () => {
     const isFs = !!(
       document.fullscreenElement ||
@@ -1707,7 +2228,7 @@ async function toggleFullscreen() {
       if (DOM.nativeVideo && DOM.nativeVideo.webkitEnterFullscreen) {
         try {
           DOM.nativeVideo.webkitEnterFullscreen();
-        } catch (e) {}
+        } catch (e) { }
       }
     }
   } else {
@@ -1847,7 +2368,7 @@ function closePlayer() {
     document.msFullscreenElement
   ) {
     if (document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     } else if (document.webkitExitFullscreen) {
       document.webkitExitFullscreen();
     }
