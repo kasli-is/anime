@@ -122,6 +122,7 @@ const DOM = {
   playerAnimeName: document.getElementById('player-anime-name'),
   playerEpName: document.getElementById('player-ep-name'),
   btnPlayerFavEp: document.getElementById('btn-player-fav-ep'),
+  btnMiniPlayer: document.getElementById('btn-mini-player'),
   btnTheaterMode: document.getElementById('btn-theater-mode'),
   btnHotkeys: document.getElementById('btn-hotkeys'),
   btnExternalLink: document.getElementById('btn-external-link'),
@@ -140,6 +141,7 @@ const DOM = {
   rippleRight: document.getElementById('ripple-right'),
   playPulse: document.getElementById('play-pulse'),
   speedHoldBadge: document.getElementById('speed-hold-badge'),
+  speedHoldBadgeText: document.getElementById('speed-hold-badge-text'),
   resumeBubble: document.getElementById('resume-bubble'),
   resumeText: document.getElementById('resume-text'),
   bufferingSpinner: document.getElementById('buffering-spinner'),
@@ -167,6 +169,7 @@ const DOM = {
   speedDropdown: document.getElementById('speed-dropdown'),
   ctrlPrevEp: document.getElementById('ctrl-prev-ep'),
   ctrlNextEp: document.getElementById('ctrl-next-ep'),
+  ctrlMiniPlayer: document.getElementById('ctrl-mini-player'),
   ctrlFullscreen: document.getElementById('ctrl-fullscreen'),
   iconFsEnter: document.querySelector('.icon-fs-enter'),
   iconFsExit: document.querySelector('.icon-fs-exit'),
@@ -1462,6 +1465,7 @@ async function startEpisode(epIndex, linkIndex = 0) {
 
   DOM.playerAnimeName.textContent = State.currentAnime.title;
   DOM.playerEpName.textContent = `${getEpisodeNumberBadge(ep, epIndex)} - ${ep.name}`;
+  DOM.playerModal.classList.remove('mini-player-mode');
   DOM.playerModal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
@@ -1704,10 +1708,10 @@ function setupGestures() {
       clearTimeout(tapTimer);
       lastTapTime = 0;
       if (side === 'left') {
-        skipSeconds(-10);
+        skipSeconds(-5);
         triggerRipple(DOM.rippleLeft);
       } else if (side === 'right') {
-        skipSeconds(10);
+        skipSeconds(5);
         triggerRipple(DOM.rippleRight);
       } else {
         togglePlayPause();
@@ -1732,13 +1736,18 @@ function setupGestures() {
   DOM.gestureRight.addEventListener('click', (e) => handleScreenTap(e, 'right'));
   DOM.gestureCenter.addEventListener('click', (e) => handleScreenTap(e, 'center'));
 
-  // Press & Hold to 2X Speed (Mobile & Desktop)
+  // Press & Hold to Double Current Speed (Mobile & Desktop)
   const startHold = () => {
     if (DOM.nativeVideo.paused) return;
     State.holdTimeout = setTimeout(() => {
       holdTriggered = true;
       State.isHolding2X = true;
-      DOM.nativeVideo.playbackRate = 2.0;
+      const baseSpeed = State.userSpeed || 1.0;
+      const boostedSpeed = Math.min(16.0, baseSpeed * 2);
+      DOM.nativeVideo.playbackRate = boostedSpeed;
+      if (DOM.speedHoldBadgeText) {
+        DOM.speedHoldBadgeText.textContent = `${boostedSpeed}X HIZ`;
+      }
       DOM.speedHoldBadge.classList.add('active');
       if (navigator.vibrate) navigator.vibrate(35);
     }, 240);
@@ -1749,7 +1758,7 @@ function setupGestures() {
     if (holdTriggered) {
       holdTriggered = false;
       State.isHolding2X = false;
-      DOM.nativeVideo.playbackRate = State.userSpeed;
+      DOM.nativeVideo.playbackRate = State.userSpeed || 1.0;
       DOM.speedHoldBadge.classList.remove('active');
     }
   };
@@ -2324,6 +2333,9 @@ function setupKeyboard() {
         case 'f':
           toggleFullscreen();
           break;
+        case 'p':
+          toggleMiniPlayer();
+          break;
         case 't':
           DOM.btnTheaterMode.click();
           break;
@@ -2360,6 +2372,30 @@ function closeDetail() {
   State.currentAnime = null;
 }
 
+function toggleMiniPlayer() {
+  if (DOM.playerModal.style.display === 'none') return;
+
+  const isMini = DOM.playerModal.classList.contains('mini-player-mode');
+  if (isMini) {
+    // Return to Full Player
+    DOM.playerModal.classList.remove('mini-player-mode');
+    document.body.style.overflow = 'hidden';
+  } else {
+    // Switch to Mini Player (bottom right of screen, allows browsing site)
+    if (
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.mozFullScreenElement ||
+      document.msFullscreenElement
+    ) {
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => { });
+    }
+    unlockScreenOrientation();
+    DOM.playerModal.classList.add('mini-player-mode');
+    document.body.style.overflow = 'auto';
+  }
+}
+
 function closePlayer() {
   if (
     document.fullscreenElement ||
@@ -2374,6 +2410,7 @@ function closePlayer() {
     }
   }
   unlockScreenOrientation();
+  DOM.playerModal.classList.remove('mini-player-mode');
   DOM.playerModal.style.display = 'none';
   document.body.style.overflow = 'auto';
   DOM.nativeVideo.pause();
@@ -2704,6 +2741,8 @@ function init() {
   // Modal Closers
   DOM.btnCloseDetail.onclick = closeDetail;
   DOM.btnClosePlayer.onclick = closePlayer;
+  if (DOM.btnMiniPlayer) DOM.btnMiniPlayer.onclick = toggleMiniPlayer;
+  if (DOM.ctrlMiniPlayer) DOM.ctrlMiniPlayer.onclick = toggleMiniPlayer;
   DOM.detailFavBtn.onclick = () => {
     if (State.currentAnime) {
       toggleFavorite(State.currentAnime.slug);
