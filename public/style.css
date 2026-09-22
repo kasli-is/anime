@@ -1837,6 +1837,9 @@ h4,
   gap: 2px;
   z-index: 40;
   min-width: 130px;
+  max-height: 250px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .speed-opt {
@@ -1880,6 +1883,121 @@ h4,
   justify-content: space-between;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+/* ========================================================= */
+/* PICTURE-IN-PICTURE / MINI OYNATICI (PC & MOBIL SAĞ ALT)   */
+/* ========================================================= */
+.player-modal.mini-player-mode {
+  position: fixed !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  width: 380px !important;
+  max-width: calc(100vw - 32px) !important;
+  height: auto !important;
+  max-height: none !important;
+  padding: 0 !important;
+  background: #0b0f19 !important;
+  border: 1px solid rgba(99, 102, 241, 0.4) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.95), 0 0 30px rgba(99, 102, 241, 0.3) !important;
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.25s ease !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.player-modal.mini-player-mode:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.98), 0 0 40px rgba(99, 102, 241, 0.45) !important;
+}
+
+.player-modal.mini-player-mode .player-wrapper {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  gap: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.player-modal.mini-player-mode .player-topbar {
+  padding: 0.45rem 0.65rem !important;
+  background: rgba(11, 15, 25, 0.95) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.player-modal.mini-player-mode .player-anime-name {
+  font-size: 0.82rem !important;
+  max-width: 160px !important;
+}
+
+.player-modal.mini-player-mode .player-ep-name {
+  font-size: 0.7rem !important;
+  max-width: 160px !important;
+}
+
+/* In mini mode, hide elements that are too crowded or redundant */
+.player-modal.mini-player-mode #btn-theater-mode,
+.player-modal.mini-player-mode #btn-hotkeys,
+.player-modal.mini-player-mode #btn-player-fav-ep,
+.player-modal.mini-player-mode #ctrl-mini-player,
+.player-modal.mini-player-mode .player-nav-bar,
+.player-modal.mini-player-mode .player-bottom-panel,
+.player-modal.mini-player-mode .volume-slider,
+.player-modal.mini-player-mode #ctrl-rewind,
+.player-modal.mini-player-mode #ctrl-forward,
+.player-modal.mini-player-mode #ctrl-prev-ep,
+.player-modal.mini-player-mode #ctrl-next-ep,
+.player-modal.mini-player-mode .speed-menu-wrap,
+.player-modal.mini-player-mode .time-display {
+  display: none !important;
+}
+
+.player-modal.mini-player-mode .player-screen-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: unset !important;
+  aspect-ratio: 16 / 9 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+.player-modal.mini-player-mode .center-play-btn {
+  width: 44px !important;
+  height: 44px !important;
+}
+
+.player-modal.mini-player-mode .center-play-btn svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+.player-modal.mini-player-mode .player-controls-bar {
+  padding: 0.35rem 0.6rem !important;
+}
+
+.player-modal.mini-player-mode .ctrl-btn {
+  width: 30px !important;
+  height: 30px !important;
+  padding: 3px !important;
+}
+
+@media (max-width: 768px) {
+  .player-modal.mini-player-mode {
+    bottom: 16px !important;
+    right: 12px !important;
+    left: auto !important;
+    width: 260px !important;
+    border-radius: var(--radius-md) !important;
+  }
 }
 
 /* Player Bottom Panel */
@@ -2666,7 +2784,7 @@ kbd {
   /* ========================================================= */
   /* VIDEO PLAYER MODAL ON MOBILE (ZERO HORIZONTAL OVERFLOW)    */
   /* ========================================================= */
-  .player-modal {
+  .player-modal:not(.mini-player-mode) {
     padding: 0 !important;
     background: #000 !important;
     width: 100% !important;
@@ -2674,7 +2792,7 @@ kbd {
     overflow-x: hidden !important;
   }
 
-  .player-wrapper {
+  .player-modal:not(.mini-player-mode) .player-wrapper {
     padding: 0 !important;
     gap: 0.5rem !important;
     width: 100% !important;
