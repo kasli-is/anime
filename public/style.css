@@ -1781,7 +1781,14 @@ h4,
 .ctrl-label {
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+#ctrl-rewind .ctrl-label {
   margin-left: -2px;
+}
+
+#ctrl-forward .ctrl-label {
+  margin-right: -2px;
 }
 
 /* Volume Slider */
