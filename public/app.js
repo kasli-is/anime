@@ -1849,6 +1849,7 @@ function setupControls() {
   let stallWatchdogTimer = null;
   let stallRetryCount = 0;
   let lastWatchedCurrentTime = 0;
+  let lastProgressCheckTime = Date.now();
 
   function clearStallWatchdog() {
     if (stallWatchdogTimer) {
@@ -1863,34 +1864,32 @@ function setupControls() {
     if (video.paused || video.ended || !video.src) return;
     if (stallWatchdogTimer) return;
 
-    // Normal tamponlamaya 2.5 saniye mühlet tanı
+    // Ölü TCP soketi için 1.2 saniyelik tolerans tanı
     stallWatchdogTimer = setTimeout(() => {
       stallWatchdogTimer = null;
       if (video.paused || video.ended || !video.src) return;
 
-      // Video hâlâ veri alamıyorsa veya oynatma ilerlemiyorsa
-      if (video.readyState < 3 || Math.abs(video.currentTime - lastWatchedCurrentTime) < 0.1) {
+      // Video ilerlemiyorsa (tampon bitti veya soket düştü)
+      const curTime = video.currentTime;
+      if (video.readyState < 3 || Math.abs(curTime - lastWatchedCurrentTime) < 0.15) {
         stallRetryCount++;
-        const curTime = video.currentTime;
-        console.warn(`[Auto-Recovery] Donma algılandı (deneme ${stallRetryCount}). Konum: ${curTime.toFixed(1)}s. Bağlantı tazeleniyor...`);
+        console.warn(`[Auto-Recovery] 15-20 dk soket donması algılandı (deneme ${stallRetryCount}). Konum: ${curTime.toFixed(1)}s. Taze bağlantı açılıyor...`);
 
         if (stallRetryCount <= 2) {
-          // Mikro ileri alma (+0.15s): Tarayıcının bayatlayan TCP soketini kapatıp
-          // sunucuya taze bir HTTP Range isteği atmasını zorlar!
-          const maxTarget = (video.duration && video.duration > 1) ? (video.duration - 0.5) : (curTime + 2);
-          video.currentTime = Math.min(maxTarget, curTime + 0.15);
+          // Mikro zıplama (+0.2s): Tarayıcının ölü soketi hemen kapatıp yeni Range isteği atmasını zorlar
+          const maxTarget = (video.duration && video.duration > 1) ? (video.duration - 0.5) : (curTime + 1);
+          video.currentTime = Math.min(maxTarget, curTime + 0.2);
           video.play().catch(() => { });
-          triggerStallRecovery();
         } else {
-          // Derin kurtarma: Bağlantıyı sıfırdan aynı saniyeden yeniden aç
+          // Derin kurtarma: Bağlantı URL'sini aynı saniyeden sıfırlayarak canlandır
           const currentSrc = video.src;
           video.src = currentSrc;
-          video.currentTime = curTime;
+          video.currentTime = Math.max(0, curTime);
           video.play().catch(() => { });
           clearStallWatchdog();
         }
       }
-    }, 2500);
+    }, 1200);
   }
 
   video.addEventListener('waiting', () => {
@@ -1915,15 +1914,21 @@ function setupControls() {
     clearStallWatchdog();
   });
 
-  // Arka planda donmayı izleyen nabız (heartbeat) kontrolü
+  // Arka planda donmayı izleyen agresif nabız (heartbeat) kontrolü
   setInterval(() => {
     if (State.playerMode === 'native' && !video.paused && !video.ended && !State.isScrubbing && video.src) {
-      if (video.currentTime > 0 && Math.abs(video.currentTime - lastWatchedCurrentTime) < 0.05 && video.readyState < 3) {
-        triggerStallRecovery();
+      const now = Date.now();
+      // Son 2.5 saniyedir currentTime milim oynamadıysa kesin donmuştur
+      if (video.currentTime > 1 && Math.abs(video.currentTime - lastWatchedCurrentTime) < 0.08) {
+        if (now - lastProgressCheckTime > 2200) {
+          triggerStallRecovery();
+        }
+      } else {
+        lastProgressCheckTime = now;
       }
       lastWatchedCurrentTime = video.currentTime;
     }
-  }, 3500);
+  }, 1200);
 
   video.addEventListener('timeupdate', () => {
     if (State.isScrubbing) return;
