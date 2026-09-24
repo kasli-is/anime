@@ -1825,6 +1825,30 @@ function togglePlayPause() {
 function setupControls() {
   const video = DOM.nativeVideo;
 
+  function scheduleHideControls() {
+    clearTimeout(State.controlsTimeout);
+    if (!video.paused) {
+      State.controlsTimeout = setTimeout(() => {
+        DOM.playerControlsBar.classList.add('hidden');
+        if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
+        DOM.playerScreenContainer.classList.add('hide-cursor');
+      }, 2500);
+    }
+  }
+
+  function showControls() {
+    clearTimeout(State.controlsTimeout);
+    DOM.playerControlsBar.classList.remove('hidden');
+    if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
+    DOM.playerScreenContainer.classList.remove('hide-cursor');
+    scheduleHideControls();
+  }
+
+  // Fare oynatıldığında kontrolleri ve imleci göster, durduğunda gizle
+  DOM.playerScreenContainer.addEventListener('mousemove', () => {
+    showControls();
+  });
+
   video.addEventListener('play', () => {
     DOM.iconPlay.style.display = 'none';
     DOM.iconPause.style.display = 'block';
