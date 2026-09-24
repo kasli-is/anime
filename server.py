@@ -1427,6 +1427,10 @@ def run():
     except KeyboardInterrupt:
         print("\nSunucu kapatılıyor...")
         httpd.server_close()
+        
+# Vercel / WSGI uyumluluğu için
+handler = AnimeHandler
+app = AnimeHandler        
 
 if __name__ == '__main__':
     run()
