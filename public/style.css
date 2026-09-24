@@ -1665,6 +1665,12 @@ h4,
   pointer-events: none;
 }
 
+/* Tam ekran veya video oynarken fare hareketsiz kalınca imleci gizle */
+.player-screen-container.hide-cursor,
+.player-screen-container.hide-cursor * {
+  cursor: none !important;
+}
+
 /* Progress / Scrub Bar */
 .progress-container {
   position: relative;
