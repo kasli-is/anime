@@ -1684,16 +1684,19 @@ function setupGestures() {
       if (!DOM.nativeVideo.paused) {
         DOM.playerControlsBar.classList.add('hidden');
         if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
+        DOM.playerScreenContainer.classList.add('hide-cursor');
       }
     } else {
-      // If hidden, show and schedule auto-hide after 3.5s
+      // If hidden, show and schedule auto-hide after 2.5s
       DOM.playerControlsBar.classList.remove('hidden');
       if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
+      DOM.playerScreenContainer.classList.remove('hide-cursor');
       if (!DOM.nativeVideo.paused) {
         State.controlsTimeout = setTimeout(() => {
           DOM.playerControlsBar.classList.add('hidden');
           if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
-        }, 3500);
+          DOM.playerScreenContainer.classList.add('hide-cursor');
+        }, 2500);
       }
     }
   }
@@ -1864,6 +1867,7 @@ function setupControls() {
     if (DOM.centerIconPause) DOM.centerIconPause.style.display = 'none';
     DOM.playerControlsBar.classList.remove('hidden');
     if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
+    DOM.playerScreenContainer.classList.remove('hide-cursor');
     clearTimeout(State.controlsTimeout);
   });
 
