@@ -1684,12 +1684,14 @@ function setupGestures() {
       DOM.playerControlsBar.classList.add('hidden');
       if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
       DOM.playerScreenContainer.classList.add('hide-cursor');
+      State.userToggledHide = true;
     } else {
       // Gizli durumdaysa kontrolleri göster
+      State.userToggledHide = false;
       DOM.playerControlsBar.classList.remove('hidden');
       if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
       DOM.playerScreenContainer.classList.remove('hide-cursor');
-      // Sadece video oynuyorsa 3 saniye sonra otomatik geri gizle (dururken açık kalsın ta ki kullanıcı tekrar tıklayana kadar)
+      // Sadece video oynuyorsa 3 saniye sonra otomatik geri gizle
       if (!DOM.nativeVideo.paused) {
         State.controlsTimeout = setTimeout(() => {
           DOM.playerControlsBar.classList.add('hidden');
@@ -1840,15 +1842,17 @@ function setupControls() {
 
   function showControls() {
     clearTimeout(State.controlsTimeout);
+    State.userToggledHide = false;
     DOM.playerControlsBar.classList.remove('hidden');
     if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
     DOM.playerScreenContainer.classList.remove('hide-cursor');
     scheduleHideControls();
   }
 
-  // Sadece gerçek masaüstü fare hareketlerinde tetikle (Mobildeki dokunma/sentetik mousemove'ları yoksay)
+  // Fare oynatıldığında kontrolleri göster (Kullanıcı bilinçli olarak tıklayıp gizlemediyse)
   DOM.playerScreenContainer.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'touch') return;
+    if (video.paused && State.userToggledHide) return; // Durdurulmuşken kullanıcı tıklayıp kapattıysa fare kıpırdasa da açma!
     showControls();
   });
 
@@ -1997,16 +2001,6 @@ function setupControls() {
       startEpisode(State.activeEpisodeIndex + 1, 0);
     }
   });
-
-  function scheduleHideControls() {
-    clearTimeout(State.controlsTimeout);
-    State.controlsTimeout = setTimeout(() => {
-      if (!DOM.nativeVideo.paused) {
-        DOM.playerControlsBar.classList.add('hidden');
-        if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
-      }
-    }, 3500);
-  }
 
   // Play / Pause Buttons (Bottom Bar and Screen Center)
   DOM.ctrlPlayPause.onclick = togglePlayPause;
