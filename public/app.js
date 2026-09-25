@@ -1687,7 +1687,7 @@ function setupGestures() {
         DOM.playerScreenContainer.classList.add('hide-cursor');
       }
     } else {
-      // If hidden, show and schedule auto-hide after 2.5s
+      // If hidden, show and schedule auto-hide after 3s
       DOM.playerControlsBar.classList.remove('hidden');
       if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
       DOM.playerScreenContainer.classList.remove('hide-cursor');
@@ -1696,7 +1696,7 @@ function setupGestures() {
           DOM.playerControlsBar.classList.add('hidden');
           if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
           DOM.playerScreenContainer.classList.add('hide-cursor');
-        }, 2500);
+        }, 3000);
       }
     }
   }
@@ -1835,7 +1835,7 @@ function setupControls() {
         DOM.playerControlsBar.classList.add('hidden');
         if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
         DOM.playerScreenContainer.classList.add('hide-cursor');
-      }, 2500);
+      }, 3500);
     }
   }
 
@@ -1847,8 +1847,9 @@ function setupControls() {
     scheduleHideControls();
   }
 
-  // Fare oynatıldığında kontrolleri ve imleci göster, durduğunda gizle
-  DOM.playerScreenContainer.addEventListener('mousemove', () => {
+  // Sadece gerçek masaüstü fare hareketlerinde tetikle (Mobildeki dokunma/sentetik mousemove'ları yoksay)
+  DOM.playerScreenContainer.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return;
     showControls();
   });
 
