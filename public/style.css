@@ -1748,8 +1748,13 @@ h4,
   transition: transform 0.15s ease;
 }
 
-.progress-container:hover .progress-scrubber {
-  transform: translate(-50%, -50%) scale(1);
+.progress-container:hover .progress-scrubber,
+.progress-container.scrubbing .progress-scrubber {
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
+.progress-container.scrubbing .progress-rail {
+  height: 8px;
 }
 
 /* Controls Row */
