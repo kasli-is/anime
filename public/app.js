@@ -2050,28 +2050,42 @@ function setupControls() {
   }
 
   // Progress Bar Scrubbing: Mouse & Touch Event Support
-  const seekMouse = (e) => {
-    const rect = DOM.progressContainer.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    video.currentTime = pos * (video.duration || 0);
+  let scrubTargetTime = null;
+
+  const updateScrubbingUI = (pos) => {
+    const percent = Math.max(0, Math.min(100, pos * 100));
+    DOM.progressPlayed.style.width = `${percent}%`;
+    DOM.progressScrubber.style.left = `${percent}%`;
+    if (video.duration) {
+      scrubTargetTime = pos * video.duration;
+      DOM.ctrlCurrentTime.textContent = formatTime(scrubTargetTime);
+    }
   };
 
-  const seekTouch = (e) => {
-    if (!e.touches || !e.touches[0]) return;
-    const touch = e.touches[0];
+  const calculatePosFromMouse = (e) => {
     const rect = DOM.progressContainer.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-    video.currentTime = pos * (video.duration || 0);
+    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  };
+
+  const calculatePosFromTouch = (e) => {
+    if (!e.touches || !e.touches[0]) return null;
+    const rect = DOM.progressContainer.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.touches[0].clientX - rect.left) / rect.width));
   };
 
   // Mouse scrubbing
   DOM.progressContainer.addEventListener('mousedown', (e) => {
     State.isScrubbing = true;
-    seekMouse(e);
+    DOM.progressContainer.classList.add('scrubbing');
+    const pos = calculatePosFromMouse(e);
+    updateScrubbingUI(pos);
   });
 
   window.addEventListener('mousemove', (e) => {
-    if (State.isScrubbing) seekMouse(e);
+    if (State.isScrubbing) {
+      const pos = calculatePosFromMouse(e);
+      updateScrubbingUI(pos);
+    }
 
     // Hover time preview
     const rect = DOM.progressContainer.getBoundingClientRect();
@@ -2083,23 +2097,54 @@ function setupControls() {
   });
 
   window.addEventListener('mouseup', () => {
-    State.isScrubbing = false;
+    if (State.isScrubbing) {
+      State.isScrubbing = false;
+      DOM.progressContainer.classList.remove('scrubbing');
+      // Sürükleme bırakıldığı an videoyu o saniyeye taşı
+      if (scrubTargetTime !== null && !isNaN(scrubTargetTime)) {
+        video.currentTime = scrubTargetTime;
+        scrubTargetTime = null;
+      }
+    }
   });
 
-  // Touch scrubbing on mobile phones
+  // Touch scrubbing on mobile phones (window seviyesinde takip et)
   DOM.progressContainer.addEventListener('touchstart', (e) => {
     State.isScrubbing = true;
-    seekTouch(e);
+    DOM.progressContainer.classList.add('scrubbing');
+    const pos = calculatePosFromTouch(e);
+    if (pos !== null) updateScrubbingUI(pos);
   }, { passive: false });
 
-  DOM.progressContainer.addEventListener('touchmove', (e) => {
+  window.addEventListener('touchmove', (e) => {
     if (State.isScrubbing) {
-      seekTouch(e);
+      const pos = calculatePosFromTouch(e);
+      if (pos !== null) updateScrubbingUI(pos);
+      if (e.cancelable) e.preventDefault();
     }
   }, { passive: false });
 
-  DOM.progressContainer.addEventListener('touchend', () => {
-    State.isScrubbing = false;
+  window.addEventListener('touchend', () => {
+    if (State.isScrubbing) {
+      State.isScrubbing = false;
+      DOM.progressContainer.classList.remove('scrubbing');
+      // Parmağı ekrandan kaldırdığı an hedef saniyeye atla
+      if (scrubTargetTime !== null && !isNaN(scrubTargetTime)) {
+        video.currentTime = scrubTargetTime;
+        scrubTargetTime = null;
+      }
+    }
+  });
+
+  window.addEventListener('touchcancel', () => {
+    if (State.isScrubbing) {
+      State.isScrubbing = false;
+      DOM.progressContainer.classList.remove('scrubbing');
+      if (scrubTargetTime !== null && !isNaN(scrubTargetTime)) {
+        video.currentTime = scrubTargetTime;
+        scrubTargetTime = null;
+      }
+    }
   });
 
   // Speed Selector
