@@ -1680,17 +1680,16 @@ function setupGestures() {
     clearTimeout(State.controlsTimeout);
 
     if (isVisible) {
-      // If already open, hide immediately (if playing)
-      if (!DOM.nativeVideo.paused) {
-        DOM.playerControlsBar.classList.add('hidden');
-        if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
-        DOM.playerScreenContainer.classList.add('hide-cursor');
-      }
+      // Açık durumdaysa (video oynuyor olsun veya durdurulmuş olsun) kontrolleri gizle
+      DOM.playerControlsBar.classList.add('hidden');
+      if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.add('hidden');
+      DOM.playerScreenContainer.classList.add('hide-cursor');
     } else {
-      // If hidden, show and schedule auto-hide after 3s
+      // Gizli durumdaysa kontrolleri göster
       DOM.playerControlsBar.classList.remove('hidden');
       if (DOM.btnCenterPlay) DOM.btnCenterPlay.classList.remove('hidden');
       DOM.playerScreenContainer.classList.remove('hide-cursor');
+      // Sadece video oynuyorsa 3 saniye sonra otomatik geri gizle (dururken açık kalsın ta ki kullanıcı tekrar tıklayana kadar)
       if (!DOM.nativeVideo.paused) {
         State.controlsTimeout = setTimeout(() => {
           DOM.playerControlsBar.classList.add('hidden');
