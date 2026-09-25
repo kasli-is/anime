@@ -2075,6 +2075,8 @@ function setupControls() {
 
   // Mouse scrubbing
   DOM.progressContainer.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // Sadece sol tık
+    e.preventDefault(); // Tarayıcının metin seçmesini ve native drag başlatmasını engelle!
     State.isScrubbing = true;
     DOM.progressContainer.classList.add('scrubbing');
     const pos = calculatePosFromMouse(e);
@@ -2083,6 +2085,7 @@ function setupControls() {
 
   window.addEventListener('mousemove', (e) => {
     if (State.isScrubbing) {
+      e.preventDefault();
       const pos = calculatePosFromMouse(e);
       updateScrubbingUI(pos);
     }
@@ -2096,7 +2099,7 @@ function setupControls() {
     }
   });
 
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (e) => {
     if (State.isScrubbing) {
       State.isScrubbing = false;
       DOM.progressContainer.classList.remove('scrubbing');
