@@ -1679,6 +1679,8 @@ h4,
   display: flex;
   align-items: center;
   cursor: pointer;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 .progress-hover-time {
@@ -1710,7 +1712,8 @@ h4,
   transition: height 0.15s ease;
 }
 
-.progress-container:hover .progress-rail {
+.progress-container:hover .progress-rail,
+.progress-container.scrubbing .progress-rail {
   height: 8px;
 }
 
@@ -1733,6 +1736,7 @@ h4,
   border-radius: var(--radius-full);
   width: 0%;
   z-index: 2;
+  transition: none !important;
 }
 
 .progress-scrubber {
@@ -1746,15 +1750,12 @@ h4,
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
   z-index: 3;
   transition: transform 0.15s ease;
+  pointer-events: none;
 }
 
 .progress-container:hover .progress-scrubber,
 .progress-container.scrubbing .progress-scrubber {
   transform: translate(-50%, -50%) scale(1.15);
-}
-
-.progress-container.scrubbing .progress-rail {
-  height: 8px;
 }
 
 /* Controls Row */
